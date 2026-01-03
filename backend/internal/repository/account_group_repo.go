@@ -68,24 +68,24 @@ func (r *AccountGroupRepository) GetWithAccounts(id int) (*models.AccountGroupWi
 		return nil, err
 	}
 
-	query := `
+	// Get ALL accounts to resolve formula dependencies
+	allAccountsQuery := `
 		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 		FROM account_balances
-		WHERE group_id = $1 AND is_archived = false
-		ORDER BY position_in_group ASC, account_name ASC
+		WHERE is_archived = false
 	`
-	rows, err := r.db.Query(query, id)
+	allRows, err := r.db.Query(allAccountsQuery)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer allRows.Close()
 
-	var accounts []models.Account
-	for rows.Next() {
+	var allAccounts []models.Account
+	for allRows.Next() {
 		var a models.Account
 		var groupID sql.NullInt64
 		var formulaJSON []byte
-		err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
+		err := allRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -96,24 +96,45 @@ func (r *AccountGroupRepository) GetWithAccounts(id int) (*models.AccountGroupWi
 		if len(formulaJSON) > 0 {
 			json.Unmarshal(formulaJSON, &a.Formula)
 		}
-		accounts = append(accounts, a)
+		allAccounts = append(allAccounts, a)
 	}
-	if err := rows.Err(); err != nil {
+	if err := allRows.Err(); err != nil {
 		return nil, err
+	}
+
+	// Resolve calculated account balances
+	ResolveCalculatedBalances(allAccounts)
+
+	// Build account lookup map
+	accountMap := make(map[int]*models.Account)
+	for i := range allAccounts {
+		accountMap[allAccounts[i].ID] = &allAccounts[i]
+	}
+
+	// Filter to accounts in this group
+	var accounts []models.Account
+	for _, a := range allAccounts {
+		if a.GroupID != nil && *a.GroupID == id {
+			accounts = append(accounts, a)
+		}
+	}
+
+	// Sort by position_in_group
+	for i := 0; i < len(accounts)-1; i++ {
+		for j := i + 1; j < len(accounts); j++ {
+			if accounts[j].PositionInGroup < accounts[i].PositionInGroup {
+				accounts[i], accounts[j] = accounts[j], accounts[i]
+			}
+		}
 	}
 
 	// Calculate total balance
 	var totalBalance float64
 	if group.IsCalculated && len(group.Formula) > 0 {
-		// Build a map of account ID to balance for quick lookup
-		accountBalances := make(map[int]float64)
-		for _, a := range accounts {
-			accountBalances[a.ID] = a.CurrentBalance
-		}
-		// Calculate formula-based balance
+		// Calculate formula-based balance using resolved account values
 		for _, item := range group.Formula {
-			if balance, ok := accountBalances[item.AccountID]; ok {
-				totalBalance += item.Coefficient * balance
+			if acc, ok := accountMap[item.AccountID]; ok {
+				totalBalance += item.Coefficient * acc.CurrentBalance
 			}
 		}
 	} else {
@@ -277,51 +298,105 @@ func (r *AccountGroupRepository) UpdateAccountPositionsInGroup(groupID int, posi
 }
 
 func (r *AccountGroupRepository) GetGroupedList() (*models.GroupedAccountsResponse, error) {
-	// Get all non-archived groups with their accounts
+	// Get all non-archived groups
 	groups, err := r.GetAll()
 	if err != nil {
 		return nil, err
 	}
 
-	// Get all non-archived, ungrouped accounts
-	ungroupedQuery := `
+	// Get ALL non-archived accounts and resolve calculated balances
+	allAccountsQuery := `
 		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 		FROM account_balances
-		WHERE group_id IS NULL AND is_archived = false
+		WHERE is_archived = false
 		ORDER BY position ASC, account_name ASC
 	`
-	ungroupedRows, err := r.db.Query(ungroupedQuery)
+	allRows, err := r.db.Query(allAccountsQuery)
 	if err != nil {
 		return nil, err
 	}
-	defer ungroupedRows.Close()
+	defer allRows.Close()
 
-	var ungroupedAccounts []models.Account
-	for ungroupedRows.Next() {
+	var allAccounts []models.Account
+	for allRows.Next() {
 		var a models.Account
 		var groupID sql.NullInt64
 		var formulaJSON []byte
-		err := ungroupedRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
+		err := allRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
 		if err != nil {
 			return nil, err
+		}
+		if groupID.Valid {
+			gid := int(groupID.Int64)
+			a.GroupID = &gid
 		}
 		if len(formulaJSON) > 0 {
 			json.Unmarshal(formulaJSON, &a.Formula)
 		}
-		ungroupedAccounts = append(ungroupedAccounts, a)
+		allAccounts = append(allAccounts, a)
 	}
-	if err := ungroupedRows.Err(); err != nil {
+	if err := allRows.Err(); err != nil {
 		return nil, err
 	}
 
-	// Get accounts for each group
+	// Resolve calculated account balances
+	ResolveCalculatedBalances(allAccounts)
+
+	// Build account lookup map
+	accountMap := make(map[int]*models.Account)
+	for i := range allAccounts {
+		accountMap[allAccounts[i].ID] = &allAccounts[i]
+	}
+
+	// Separate ungrouped accounts
+	var ungroupedAccounts []models.Account
+	for _, a := range allAccounts {
+		if a.GroupID == nil {
+			ungroupedAccounts = append(ungroupedAccounts, a)
+		}
+	}
+
+	// Build groups with their accounts using resolved balances
 	groupsWithAccounts := make(map[int]*models.AccountGroupWithAccounts)
 	for _, g := range groups {
-		gwa, err := r.GetWithAccounts(g.ID)
-		if err != nil {
-			return nil, err
+		// Get accounts for this group from our resolved list
+		var groupAccounts []models.Account
+		for _, a := range allAccounts {
+			if a.GroupID != nil && *a.GroupID == g.ID {
+				groupAccounts = append(groupAccounts, a)
+			}
 		}
-		groupsWithAccounts[g.ID] = gwa
+
+		// Sort by position_in_group
+		for i := 0; i < len(groupAccounts)-1; i++ {
+			for j := i + 1; j < len(groupAccounts); j++ {
+				if groupAccounts[j].PositionInGroup < groupAccounts[i].PositionInGroup {
+					groupAccounts[i], groupAccounts[j] = groupAccounts[j], groupAccounts[i]
+				}
+			}
+		}
+
+		// Calculate group total balance
+		var totalBalance float64
+		if g.IsCalculated && len(g.Formula) > 0 {
+			// Formula-based group: calculate from formula
+			for _, item := range g.Formula {
+				if acc, ok := accountMap[item.AccountID]; ok {
+					totalBalance += item.Coefficient * acc.CurrentBalance
+				}
+			}
+		} else {
+			// Regular group: sum account balances
+			for _, a := range groupAccounts {
+				totalBalance += a.CurrentBalance
+			}
+		}
+
+		groupsWithAccounts[g.ID] = &models.AccountGroupWithAccounts{
+			AccountGroup: g,
+			TotalBalance: totalBalance,
+			Accounts:     groupAccounts,
+		}
 	}
 
 	// Build the interleaved list based on position

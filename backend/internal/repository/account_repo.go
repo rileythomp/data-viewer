@@ -12,6 +12,63 @@ type AccountRepository struct {
 	db *sql.DB
 }
 
+// ResolveCalculatedBalances computes the CurrentBalance for all calculated accounts
+// by evaluating their formulas. It handles nested dependencies by resolving accounts
+// in topological order (non-calculated first, then calculated accounts whose
+// dependencies have been resolved).
+func ResolveCalculatedBalances(accounts []models.Account) {
+	// Build map of account ID -> pointer to account
+	accountMap := make(map[int]*models.Account)
+	for i := range accounts {
+		accountMap[accounts[i].ID] = &accounts[i]
+	}
+
+	// Track which accounts have been resolved
+	resolved := make(map[int]bool)
+	for id, acc := range accountMap {
+		if !acc.IsCalculated {
+			resolved[id] = true
+		}
+	}
+
+	// Iteratively resolve calculated accounts
+	// Use multiple passes to handle nested dependencies
+	maxIterations := len(accounts)
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		progress := false
+		for id, acc := range accountMap {
+			if resolved[id] || !acc.IsCalculated {
+				continue
+			}
+
+			// Check if all dependencies are resolved
+			allResolved := true
+			for _, item := range acc.Formula {
+				if !resolved[item.AccountID] {
+					allResolved = false
+					break
+				}
+			}
+
+			if allResolved {
+				// Calculate balance from formula
+				var total float64
+				for _, item := range acc.Formula {
+					if dep, ok := accountMap[item.AccountID]; ok {
+						total += item.Coefficient * dep.CurrentBalance
+					}
+				}
+				acc.CurrentBalance = total
+				resolved[id] = true
+				progress = true
+			}
+		}
+		if !progress {
+			break
+		}
+	}
+}
+
 func NewAccountRepository(db *sql.DB) *AccountRepository {
 	return &AccountRepository{db: db}
 }
@@ -46,6 +103,10 @@ func (r *AccountRepository) GetAll() ([]models.Account, error) {
 		}
 		accounts = append(accounts, a)
 	}
+
+	// Resolve calculated account balances
+	ResolveCalculatedBalances(accounts)
+
 	return accounts, nil
 }
 
@@ -72,6 +133,22 @@ func (r *AccountRepository) GetByID(id int) (*models.Account, error) {
 	if len(formulaJSON) > 0 {
 		json.Unmarshal(formulaJSON, &a.Formula)
 	}
+
+	// If this is a calculated account, resolve its balance using all accounts
+	if a.IsCalculated && len(a.Formula) > 0 {
+		allAccounts, err := r.GetAll()
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch accounts for balance calculation: %w", err)
+		}
+		// Find our account in the resolved list and copy its balance
+		for _, acc := range allAccounts {
+			if acc.ID == id {
+				a.CurrentBalance = acc.CurrentBalance
+				break
+			}
+		}
+	}
+
 	return &a, nil
 }
 
