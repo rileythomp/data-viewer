@@ -1,15 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
   closestCenter,
-  pointerWithin,
-  rectIntersection,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  useDroppable,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -22,15 +19,15 @@ import { CSS } from '@dnd-kit/utilities';
 import { Settings } from 'lucide-react';
 import { listApi, accountsApi, groupsApi } from '../services/api';
 import AccountCard from './AccountCard';
-import GroupCard from './GroupCard';
+import GroupCard, { GroupCardPreview } from './GroupCard';
+import SortControls from './SortControls';
 import AccountForm from './AccountForm';
 import GroupForm from './GroupForm';
 import EditAccountModal from './EditAccountModal';
 import BalanceHistoryModal from './BalanceHistoryModal';
 import SettingsModal from './SettingsModal';
 
-function SortableItem({ item, children }) {
-  const id = item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`;
+function SortableGroup({ group, children }) {
   const {
     attributes,
     listeners,
@@ -38,7 +35,7 @@ function SortableItem({ item, children }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id: `group-${group.id}` });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -48,25 +45,8 @@ function SortableItem({ item, children }) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {children}
-    </div>
-  );
-}
-
-function UnGroupedDropZone({ isVisible }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: 'ungrouped-drop',
-  });
-
-  if (!isVisible) return null;
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`ungrouped-drop-zone ${isOver ? 'ungrouped-drop-zone-active' : ''}`}
-    >
-      <p>Drop here to remove from group</p>
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {React.cloneElement(children, { dragHandleProps: listeners })}
     </div>
   );
 }
@@ -83,13 +63,11 @@ export default function AccountList() {
   const [viewingHistory, setViewingHistory] = useState(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
-  const [activeId, setActiveId] = useState(null);
-  const [activeItem, setActiveItem] = useState(null);
-  const [draggedWithinGroup, setDraggedWithinGroup] = useState(null); // Track group ID if reordering within a group
-  const [dragSourceGroupId, setDragSourceGroupId] = useState(null); // Track source group for cross-group transfers
-  const [crossGroupDragTarget, setCrossGroupDragTarget] = useState(null); // Track cross-group drag { groupId, position }
-  const [originalListData, setOriginalListData] = useState(null); // Store original state for cross-group drag preview
-  
+  const [activeGroup, setActiveGroup] = useState(null);
+  const [sortOrder, setSortOrder] = useState(() => {
+    return localStorage.getItem('groupSortOrder') || 'custom';
+  });
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -101,92 +79,41 @@ export default function AccountList() {
     })
   );
 
-  // Helper to parse drag IDs - handles both "account-{id}" and "group-{groupId}-account-{accountId}"
-  const parseDragId = useCallback((idStr) => {
-    const str = String(idStr);
-    // Check for composite ID: "group-{groupId}-account-{accountId}"
-    const compositeMatch = str.match(/^group-(\d+)-account-(\d+)$/);
-    if (compositeMatch) {
-      return {
-        type: 'grouped-account',
-        groupId: parseInt(compositeMatch[1], 10),
-        accountId: parseInt(compositeMatch[2], 10),
-      };
-    }
-    // Check for simple account ID: "account-{id}"
-    if (str.startsWith('account-')) {
-      return {
-        type: 'ungrouped-account',
-        groupId: null,
-        accountId: parseInt(str.replace('account-', ''), 10),
-      };
-    }
-    // Check for group drop zone: "group-drop-{id}"
-    if (str.startsWith('group-drop-')) {
-      return {
-        type: 'group-drop',
-        groupId: parseInt(str.replace('group-drop-', ''), 10),
-        accountId: null,
-      };
-    }
-    // Check for group: "group-{id}"
-    if (str.startsWith('group-')) {
-      return {
-        type: 'group',
-        groupId: parseInt(str.replace('group-', ''), 10),
-        accountId: null,
-      };
-    }
-    return { type: 'unknown', groupId: null, accountId: null };
+  // Handle sort order change
+  const handleSortChange = useCallback((newSortOrder) => {
+    setSortOrder(newSortOrder);
+    localStorage.setItem('groupSortOrder', newSortOrder);
   }, []);
 
-  // Determine if we should insert after the target based on cursor position
-  const shouldInsertAfter = useCallback((event) => {
-    const activeRect = event.active?.rect?.current?.translated;
-    const overRect = event.over?.rect;
-
-    if (!activeRect || !overRect) return false;
-
-    // Compare center of dragged element to midpoint of target
-    const activeCenterY = activeRect.top + activeRect.height / 2;
-    const overMidpointY = overRect.top + overRect.height / 2;
-
-    return activeCenterY > overMidpointY;
-  }, []);
-
-  // Custom collision detection that prioritizes group drop zones
-  // but allows sorting within groups (same or different)
-  const collisionDetection = useCallback((args) => {
-    const { active } = args;
-    const activeParsed = parseDragId(active.id);
-
-    // Check if we're dragging an account that's in a group
-    const isFromGroup = activeParsed.type === 'grouped-account';
-
-    // First check for droppable zones (groups and ungrouped)
-    const pointerCollisions = pointerWithin(args);
-
-    // Check for ungrouped drop zone (only valid if dragging from a group)
-    const ungroupedDropCollision = pointerCollisions.find(
-      (collision) => String(collision.id) === 'ungrouped-drop'
-    );
-    if (ungroupedDropCollision && isFromGroup) {
-      return [ungroupedDropCollision];
+  // Compute sorted items based on sort selection
+  const sortedItems = useMemo(() => {
+    if (sortOrder === 'custom') {
+      return listData.items;
     }
 
-    const groupDropCollision = pointerCollisions.find(
-      (collision) => String(collision.id).startsWith('group-drop-')
-    );
+    const itemsCopy = [...listData.items];
 
-    // If hovering over a group drop zone, use closestCenter to allow positioning
-    if (groupDropCollision) {
-      // Use closestCenter for sorting within any group (same or different)
-      return closestCenter(args);
+    const getGroupName = (item) => item.group?.group_name?.toLowerCase() || '';
+    const getAccountName = (item) => item.account?.account_name?.toLowerCase() || '';
+    const getGroupValue = (item) => item.group?.total_balance || 0;
+    const getAccountValue = (item) => item.account?.current_balance || 0;
+
+    const getName = (item) => item.type === 'group' ? getGroupName(item) : getAccountName(item);
+    const getValue = (item) => item.type === 'group' ? getGroupValue(item) : getAccountValue(item);
+
+    switch (sortOrder) {
+      case 'name-asc':
+        return itemsCopy.sort((a, b) => getName(a).localeCompare(getName(b)));
+      case 'name-desc':
+        return itemsCopy.sort((a, b) => getName(b).localeCompare(getName(a)));
+      case 'value-asc':
+        return itemsCopy.sort((a, b) => getValue(a) - getValue(b));
+      case 'value-desc':
+        return itemsCopy.sort((a, b) => getValue(b) - getValue(a));
+      default:
+        return itemsCopy;
     }
-
-    // Fall back to closest center for sortable reordering
-    return closestCenter(args);
-  }, [parseDragId]);
+  }, [listData.items, sortOrder]);
 
   const fetchData = async (isInitialLoad = false) => {
     try {
@@ -230,472 +157,64 @@ export default function AccountList() {
 
   const handleDragStart = (event) => {
     const { active } = event;
-    setActiveId(active.id);
+    const idStr = String(active.id);
 
-    // Save original state for potential restoration on cancel
-    setOriginalListData(listData);
-
-    // Find the active item to render in the overlay
-    const parsed = parseDragId(active.id);
-
-    if (parsed.type === 'grouped-account') {
-      // Dragging from within a group - we know the exact group
+    // Only handle group dragging
+    if (idStr.startsWith('group-')) {
+      const groupId = parseInt(idStr.replace('group-', ''), 10);
       const groupItem = listData.items.find(
-        (item) => item.type === 'group' && item.group.id === parsed.groupId
+        (item) => item.type === 'group' && item.group.id === groupId
       );
       if (groupItem) {
-        const account = groupItem.group.accounts?.find((a) => a.id === parsed.accountId);
-        if (account) {
-          setActiveItem({ type: 'account', data: account });
-          setDragSourceGroupId(parsed.groupId);
-        }
-      }
-    } else if (parsed.type === 'ungrouped-account') {
-      // Dragging an ungrouped account
-      const ungroupedItem = listData.items.find(
-        (item) => item.type === 'account' && item.account.id === parsed.accountId
-      );
-      if (ungroupedItem) {
-        setActiveItem({ type: 'account', data: ungroupedItem.account });
-        setDragSourceGroupId(null);
+        setActiveGroup(groupItem.group);
       }
     }
   };
 
   const handleDragCancel = () => {
-    setActiveId(null);
-    setActiveItem(null);
-    setDraggedWithinGroup(null);
-    setDragSourceGroupId(null);
-    setCrossGroupDragTarget(null);
-    // Restore original state instead of refetching
-    if (originalListData) {
-      setListData(originalListData);
-    }
-    setOriginalListData(null);
-  };
-
-  const handleDragOver = (event) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const activeParsed = parseDragId(active.id);
-    const overParsed = parseDragId(over.id);
-
-    // Only handle account drags
-    if (activeParsed.type !== 'grouped-account' && activeParsed.type !== 'ungrouped-account') {
-      return;
-    }
-
-    const activeAccountId = activeParsed.accountId;
-
-    // Handle dragging over another account (either in same group or different group)
-    if (overParsed.type === 'grouped-account') {
-      const overAccountId = overParsed.accountId;
-      const overGroupId = overParsed.groupId;
-
-      // Find the over group
-      const overGroupItem = listData.items.find(
-        (item) => item.type === 'group' && item.group.id === overGroupId
-      );
-      if (!overGroupItem) return;
-
-      const overGroup = overGroupItem.group;
-
-      // Both accounts are in the same group - update UI in real-time for reordering
-      if (dragSourceGroupId !== null && dragSourceGroupId === overGroupId) {
-        const accounts = overGroup.accounts;
-        const activeIndex = accounts.findIndex((a) => a.id === activeAccountId);
-        const overIndex = accounts.findIndex((a) => a.id === overAccountId);
-
-        if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
-          // Track that we're reordering within this group
-          setDraggedWithinGroup(overGroupId);
-          setCrossGroupDragTarget(null);
-          setListData((prev) => ({
-            ...prev,
-            items: prev.items.map((item) => {
-              if (item.type === 'group' && item.group.id === overGroupId) {
-                return {
-                  ...item,
-                  group: {
-                    ...item.group,
-                    accounts: arrayMove([...item.group.accounts], activeIndex, overIndex),
-                  },
-                };
-              }
-              return item;
-            }),
-          }));
-        }
-      } else if (dragSourceGroupId !== overGroupId) {
-        // Cross-group drag: dragging over an account in a different group
-        const originalOverGroup = originalListData?.items.find(
-          (item) => item.type === 'group' && item.group.id === overGroupId
-        )?.group;
-        const isAlreadyInTargetGroup = originalOverGroup?.accounts?.some((a) => a.id === activeAccountId);
-        if (isAlreadyInTargetGroup) {
-          setCrossGroupDragTarget(null);
-          return;
-        }
-
-        // Check if account is already in target group (from previous dragOver)
-        const currentAccountIndex = overGroup.accounts.findIndex((a) => a.id === activeAccountId);
-        const overAccountIndex = overGroup.accounts.findIndex((a) => a.id === overAccountId);
-
-        if (currentAccountIndex !== -1) {
-          // Account already in target group - reposition with arrayMove
-          if (currentAccountIndex !== overAccountIndex && overAccountIndex !== -1) {
-            // Adjust target based on cursor position
-            const insertAfter = shouldInsertAfter(event);
-            let targetIndex = overAccountIndex;
-
-            // When moving up but wanting to be after target, add 1
-            if (insertAfter && currentAccountIndex > overAccountIndex) {
-              targetIndex = overAccountIndex + 1;
-            }
-
-            // Skip if target equals current (no actual move)
-            if (targetIndex === currentAccountIndex) {
-              return;
-            }
-
-            setListData((prev) => {
-              const newItems = prev.items.map((item) => {
-                if (item.type === 'group' && item.group.id === overGroupId) {
-                  const newAccounts = arrayMove([...item.group.accounts], currentAccountIndex, targetIndex);
-                  return {
-                    ...item,
-                    group: { ...item.group, accounts: newAccounts },
-                  };
-                }
-                return item;
-              });
-              // Calculate position from actual index after move
-              const updatedGroup = newItems.find((item) => item.type === 'group' && item.group.id === overGroupId);
-              const actualIndex = updatedGroup?.group?.accounts?.findIndex((a) => a.id === activeAccountId) ?? 0;
-              setCrossGroupDragTarget({ groupId: overGroupId, position: actualIndex + 1 });
-              return { ...prev, items: newItems };
-            });
-          }
-          return;
-        }
-
-        // First time moving to target group - insert the account
-        const draggedAccount = activeItem?.data;
-        if (!draggedAccount) return;
-
-        setListData((prev) => {
-          const newItems = prev.items.map((item) => {
-            if (item.type === 'group') {
-              // Remove from source group
-              if (dragSourceGroupId !== null && item.group.id === dragSourceGroupId) {
-                return {
-                  ...item,
-                  group: {
-                    ...item.group,
-                    accounts: (item.group.accounts || []).filter((a) => a.id !== activeAccountId),
-                  },
-                };
-              }
-              // Insert into target group at hover position
-              if (item.group.id === overGroupId) {
-                const newAccounts = [...(item.group.accounts || [])];
-                const insertIndex = newAccounts.findIndex((a) => a.id === overAccountId);
-                // Determine if inserting before or after based on cursor position
-                const insertAfter = shouldInsertAfter(event);
-                const actualInsertIndex = insertAfter ? insertIndex + 1 : insertIndex;
-                newAccounts.splice(actualInsertIndex, 0, draggedAccount);
-                return {
-                  ...item,
-                  group: { ...item.group, accounts: newAccounts },
-                };
-              }
-            }
-            return item;
-          });
-          // Calculate position from actual index after insert
-          const updatedGroup = newItems.find((item) => item.type === 'group' && item.group.id === overGroupId);
-          const actualIndex = updatedGroup?.group?.accounts?.findIndex((a) => a.id === activeAccountId) ?? 0;
-          setCrossGroupDragTarget({ groupId: overGroupId, position: actualIndex + 1 });
-          return { ...prev, items: newItems };
-        });
-        setDraggedWithinGroup(null);
-      }
-    } else if (overParsed.type === 'group-drop') {
-      // Dragging over empty group area (not over a specific account)
-      const targetGroupId = overParsed.groupId;
-
-      const originalTargetGroup = originalListData?.items.find(
-        (item) => item.type === 'group' && item.group.id === targetGroupId
-      )?.group;
-      const isAlreadyInTargetGroup = originalTargetGroup?.accounts?.some((a) => a.id === activeAccountId);
-
-      if (isAlreadyInTargetGroup) {
-        setCrossGroupDragTarget(null);
-        return;
-      }
-
-      if (dragSourceGroupId !== targetGroupId) {
-        // Check if account is already in target group (from previous dragOver)
-        const currentTargetGroup = listData.items.find(
-          (item) => item.type === 'group' && item.group.id === targetGroupId
-        )?.group;
-        const alreadyInCurrentTarget = currentTargetGroup?.accounts?.some((a) => a.id === activeAccountId);
-
-        if (alreadyInCurrentTarget) {
-          // Already in target, just update position to end
-          const accountCount = currentTargetGroup.accounts.length;
-          setCrossGroupDragTarget({ groupId: targetGroupId, position: accountCount });
-          return;
-        }
-
-        // First time - insert at end of target group
-        const draggedAccount = activeItem?.data;
-        if (!draggedAccount) return;
-
-        setListData((prev) => {
-          const newItems = prev.items.map((item) => {
-            if (item.type === 'group') {
-              // Remove from source group
-              if (dragSourceGroupId !== null && item.group.id === dragSourceGroupId) {
-                return {
-                  ...item,
-                  group: {
-                    ...item.group,
-                    accounts: (item.group.accounts || []).filter((a) => a.id !== activeAccountId),
-                  },
-                };
-              }
-              // Append to target group
-              if (item.group.id === targetGroupId) {
-                const newAccounts = [...(item.group.accounts || []), draggedAccount];
-                return {
-                  ...item,
-                  group: { ...item.group, accounts: newAccounts },
-                };
-              }
-            }
-            return item;
-          });
-          // Position at end
-          const updatedGroup = newItems.find((item) => item.type === 'group' && item.group.id === targetGroupId);
-          const accountCount = updatedGroup?.group?.accounts?.length ?? 1;
-          setCrossGroupDragTarget({ groupId: targetGroupId, position: accountCount });
-          return { ...prev, items: newItems };
-        });
-        setDraggedWithinGroup(null);
-      }
-    }
+    setActiveGroup(null);
   };
 
   const handleDragEnd = async (event) => {
-    setActiveId(null);
-    setActiveItem(null);
-
     const { active, over } = event;
-    const groupIdForReorder = draggedWithinGroup;
-    const sourceGroupId = dragSourceGroupId;
-    const crossGroupTarget = crossGroupDragTarget;
-    const savedOriginalListData = originalListData; // Save before clearing for use in checks
-    setDraggedWithinGroup(null); // Reset the tracking state
-    setDragSourceGroupId(null);
-    setCrossGroupDragTarget(null);
-    setOriginalListData(null); // Clear original state - we're committing the change
-
-    // If we reordered within a group during drag, persist the new order
-    if (groupIdForReorder !== null) {
-      const currentGroupItem = listData.items.find(
-        (item) => item.type === 'group' && item.group.id === groupIdForReorder
-      );
-      if (currentGroupItem && currentGroupItem.group.accounts) {
-        const positions = currentGroupItem.group.accounts
-          .map((account, index) => ({
-            id: account.id,
-            position_in_group: index + 1,
-          }));
-
-        try {
-          await groupsApi.updateAccountPositionsInGroup(groupIdForReorder, positions);
-        } catch (err) {
-          setError('Failed to save account order');
-          fetchData();
-        }
-      }
-      return;
-    }
-
-    // If we have a cross-group drag target, use it
-    if (crossGroupTarget !== null) {
-      const activeParsed = parseDragId(active.id);
-      if (activeParsed.type === 'grouped-account' || activeParsed.type === 'ungrouped-account') {
-        const accountId = activeParsed.accountId;
-
-        // Skip if dropping into the same group (shouldn't happen but safety check)
-        if (sourceGroupId === crossGroupTarget.groupId) {
-          fetchData();
-          return;
-        }
-
-        // Check if account was already in target group before drag (using original data)
-        const checkData = savedOriginalListData || listData;
-        const targetGroupItem = checkData.items.find(
-          (item) => item.type === 'group' && item.group.id === crossGroupTarget.groupId
-        );
-        const isAlreadyInTargetGroup = targetGroupItem?.group?.accounts?.some((a) => a.id === accountId);
-        if (isAlreadyInTargetGroup) {
-          // Account already exists in target group, just refresh and return
-          fetchData();
-          return;
-        }
-
-        try {
-          // Use move action: removes from source group, adds to destination
-          await accountsApi.modifyGroupMembership(
-            accountId,
-            'move',
-            crossGroupTarget.groupId,
-            sourceGroupId,  // Source group (null if ungrouped)
-            crossGroupTarget.position
-          );
-          await fetchData();
-        } catch (err) {
-          setError('Failed to move account to group');
-          fetchData();
-        }
-      }
-      return;
-    }
+    setActiveGroup(null);
 
     if (!over || active.id === over.id) return;
 
-    const activeParsed = parseDragId(active.id);
-    const overParsed = parseDragId(over.id);
-
-    // Check if dropping an account onto the ungrouped drop zone
-    if ((activeParsed.type === 'grouped-account' || activeParsed.type === 'ungrouped-account') &&
-        String(over.id) === 'ungrouped-drop') {
-      const accountId = activeParsed.accountId;
-
-      try {
-        // Remove from source group only (keeps other group memberships)
-        if (sourceGroupId !== null) {
-          await accountsApi.modifyGroupMembership(accountId, 'remove', sourceGroupId);
-        }
-        await fetchData();
-      } catch (err) {
-        setError('Failed to remove account from group');
-      }
-      return;
-    }
-
-    // Check if dropping an account onto a group drop target (works for both ungrouped→group and group→group)
-    if ((activeParsed.type === 'grouped-account' || activeParsed.type === 'ungrouped-account') &&
-        overParsed.type === 'group-drop') {
-      const accountId = activeParsed.accountId;
-      const targetGroupId = overParsed.groupId;
-
-      // Skip if dropping into the same group
-      if (sourceGroupId === targetGroupId) {
-        return;
-      }
-
-      // Check if account is already in target group (multi-group case)
-      const targetGroupItem = listData.items.find(
-        (item) => item.type === 'group' && item.group.id === targetGroupId
-      );
-      const isAlreadyInTargetGroup = targetGroupItem?.group?.accounts?.some((a) => a.id === accountId);
-      if (isAlreadyInTargetGroup) {
-        // Account already exists in target group, ignore
-        return;
-      }
-
-      try {
-        // Use move action: removes from source group, adds to destination
-        await accountsApi.modifyGroupMembership(
-          accountId,
-          'move',
-          targetGroupId,
-          sourceGroupId,  // Source group (null if ungrouped)
-          null  // Default to end of group
-        );
-        await fetchData();
-      } catch (err) {
-        setError('Failed to move account to group');
-      }
-      return;
-    }
-
-    // Handle dropping on an account in a different group
-    if ((activeParsed.type === 'grouped-account' || activeParsed.type === 'ungrouped-account') &&
-        overParsed.type === 'grouped-account') {
-      const accountId = activeParsed.accountId;
-      const overAccountId = overParsed.accountId;
-      const overGroupId = overParsed.groupId;
-
-      // Find the over group
-      const overGroupItem = listData.items.find(
-        (item) => item.type === 'group' && item.group.id === overGroupId
-      );
-      if (overGroupItem && overGroupId !== sourceGroupId) {
-        const overGroup = overGroupItem.group;
-        // Check if account is already in target group (multi-group case)
-        const isAlreadyInTargetGroup = overGroup.accounts.some((a) => a.id === accountId);
-        if (isAlreadyInTargetGroup) {
-          // Account already exists in target group, ignore
-          return;
-        }
-
-        const overIndex = overGroup.accounts.findIndex((a) => a.id === overAccountId);
-        const targetPosition = overIndex + 1;
-
-        try {
-          // Use move action: removes from source group, adds to destination
-          await accountsApi.modifyGroupMembership(
-            accountId,
-            'move',
-            overGroup.id,
-            sourceGroupId,
-            targetPosition
-          );
-          await fetchData();
-        } catch (err) {
-          setError('Failed to move account to group');
-        }
-        return;
-      }
-    }
-
-    // Check if we're reordering main list items (ungrouped accounts or groups themselves)
     const activeIdStr = String(active.id);
     const overIdStr = String(over.id);
 
-    const activeIndex = listData.items.findIndex((item) => {
-      const itemId = item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`;
-      return itemId === activeIdStr;
-    });
+    // Only handle group reordering
+    if (!activeIdStr.startsWith('group-') || !overIdStr.startsWith('group-')) {
+      return;
+    }
 
-    const overIndex = listData.items.findIndex((item) => {
-      const itemId = item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`;
-      return itemId === overIdStr;
-    });
+    const activeIndex = listData.items.findIndex((item) =>
+      item.type === 'group' && `group-${item.group.id}` === activeIdStr
+    );
 
-    if (activeIndex !== -1 && overIndex !== -1) {
-      // Reordering main list
-      const newItems = arrayMove(listData.items, activeIndex, overIndex);
+    const overIndex = listData.items.findIndex((item) =>
+      item.type === 'group' && `group-${item.group.id}` === overIdStr
+    );
+
+    if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
+      // Reorder groups in the list
+      const newItems = arrayMove([...listData.items], activeIndex, overIndex);
       setListData({ ...listData, items: newItems });
 
-      // Build positions array
-      const positions = newItems.map((item, index) => ({
-        id: item.type === 'group' ? item.group.id : item.account.id,
-        position: index + 1,
-        is_group: item.type === 'group',
-      }));
+      // Build positions array for groups only
+      const positions = newItems
+        .filter((item) => item.type === 'group')
+        .map((item, index) => ({
+          id: item.group.id,
+          position: index + 1,
+          is_group: true,
+        }));
 
       try {
         await groupsApi.updatePositions(positions);
       } catch (err) {
-        setError('Failed to save order');
+        setError('Failed to save group order');
         fetchData();
       }
     }
@@ -782,9 +301,12 @@ export default function AccountList() {
     return <div className="loading">Loading...</div>;
   }
 
-  const sortableIds = listData.items.map((item) =>
-    item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`
-  );
+  // Only groups are sortable now
+  const sortableGroupIds = sortedItems
+    .filter((item) => item.type === 'group')
+    .map((item) => `group-${item.group.id}`);
+
+  const isSortable = sortOrder === 'custom';
 
   return (
     <div className="app">
@@ -802,6 +324,7 @@ export default function AccountList() {
           </div>
         </div>
         <div className="header-actions">
+          <SortControls sortOrder={sortOrder} onSortChange={handleSortChange} />
           <button
             onClick={() => {
               setShowAddGroupForm(!showAddGroupForm);
@@ -847,49 +370,42 @@ export default function AccountList() {
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={collisionDetection}
+          collisionDetection={closestCenter}
           onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+          <SortableContext items={sortableGroupIds} strategy={verticalListSortingStrategy}>
             <div className="list-container">
-              {listData.items.map((item) => (
-                <SortableItem key={item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`} item={item}>
-                  {item.type === 'group' ? (
+              {sortedItems.map((item) =>
+                item.type === 'group' ? (
+                  <SortableGroup key={`group-${item.group.id}`} group={item.group}>
                     <GroupCard
                       group={item.group}
                       isExpanded={expandedGroups.has(item.group.id)}
                       onToggleExpand={handleToggleExpand}
                       onEdit={setEditingGroup}
-                      onEditAccount={setEditingAccount}
                       onUpdateBalance={handleUpdateBalance}
                       onViewHistory={setViewingHistory}
-                      crossGroupDragAccountId={crossGroupDragTarget?.groupId === item.group.id ? activeItem?.data?.id : null}
+                      sortable={isSortable}
                     />
-                  ) : (
-                    <AccountCard
-                      account={item.account}
-                      onEdit={setEditingAccount}
-                      onUpdateBalance={handleUpdateBalance}
-                      onViewHistory={setViewingHistory}
-                    />
-                  )}
-                </SortableItem>
-              ))}
+                  </SortableGroup>
+                ) : (
+                  <AccountCard
+                    key={`account-${item.account.id}`}
+                    account={item.account}
+                    onEdit={setEditingAccount}
+                    onUpdateBalance={handleUpdateBalance}
+                    onViewHistory={setViewingHistory}
+                  />
+                )
+              )}
             </div>
           </SortableContext>
-          <UnGroupedDropZone isVisible={dragSourceGroupId !== null} />
           <DragOverlay dropAnimation={{ duration: 200, easing: 'ease' }}>
-            {activeItem?.type === 'account' && (
-              <div className="drag-overlay">
-                <AccountCard
-                  account={activeItem.data}
-                  onEdit={() => { }}
-                  onUpdateBalance={() => { }}
-                  onViewHistory={() => { }}
-                />
+            {activeGroup && (
+              <div className="drag-overlay drag-overlay-group">
+                <GroupCardPreview group={activeGroup} />
               </div>
             )}
           </DragOverlay>
