@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, History } from 'lucide-react';
+import { ChevronDown, ChevronUp, History, GripVertical } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import BalanceHistoryModal from './BalanceHistoryModal';
 import {
@@ -50,6 +50,7 @@ export default function GroupCard({
   onUpdateBalance,
   onViewHistory,
   crossGroupDragAccountId,
+  dragHandleProps,
 }) {
   const navigate = useNavigate();
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -96,6 +97,13 @@ export default function GroupCard({
       />
       <div className="group-card-header" onClick={handleToggleExpand}>
         <div className="group-header-left">
+          <div
+            className="group-drag-handle"
+            {...dragHandleProps}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical size={18} />
+          </div>
           <button
             className="btn-icon btn-expand"
             onClick={handleToggleExpand}
@@ -161,6 +169,32 @@ export default function GroupCard({
           onClose={() => setShowHistoryModal(false)}
         />
       )}
+    </div>
+  );
+}
+
+export function GroupCardPreview({ group }) {
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
+  };
+
+  return (
+    <div className="group-card group-card-preview">
+      <div className="group-color-indicator" style={{ backgroundColor: group.color }} />
+      <div className="group-card-header">
+        <div className="group-header-left">
+          <h3 className="group-name">{group.group_name}</h3>
+          <span className="group-account-count">
+            ({group.accounts?.length || 0} accounts)
+          </span>
+        </div>
+        <div className="group-header-right">
+          <span className="group-total">{formatCurrency(group.total_balance)}</span>
+        </div>
+      </div>
     </div>
   );
 }

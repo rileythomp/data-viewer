@@ -1369,6 +1369,39 @@
   background: var(--color-surface);
 }
 
+/* Group drag handle */
+.group-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  margin-right: var(--space-2);
+  color: var(--color-text-muted);
+  cursor: grab;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.group-drag-handle:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+}
+
+.group-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Group drag overlay */
+.drag-overlay-group .group-card {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  border: 2px solid var(--color-primary);
+  background: var(--color-surface);
+}
+
+.group-card-preview {
+  pointer-events: none;
+}
+
 /* List container item transitions */
 .list-container>div {
   transition: transform 200ms ease, opacity 200ms ease;

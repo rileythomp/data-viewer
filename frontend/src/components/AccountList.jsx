@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -22,7 +22,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Settings } from 'lucide-react';
 import { listApi, accountsApi, groupsApi } from '../services/api';
 import AccountCard from './AccountCard';
-import GroupCard from './GroupCard';
+import GroupCard, { GroupCardPreview } from './GroupCard';
 import AccountForm from './AccountForm';
 import GroupForm from './GroupForm';
 import EditAccountModal from './EditAccountModal';
@@ -47,6 +47,16 @@ function SortableItem({ item, children }) {
     zIndex: isDragging ? 1000 : 'auto',
   };
 
+  // For groups, pass listeners to child for dedicated drag handle
+  if (item.type === 'group') {
+    return (
+      <div ref={setNodeRef} style={style} {...attributes}>
+        {React.cloneElement(children, { dragHandleProps: listeners })}
+      </div>
+    );
+  }
+
+  // For accounts, apply listeners to wrapper (current behavior)
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       {children}
@@ -89,7 +99,8 @@ export default function AccountList() {
   const [dragSourceGroupId, setDragSourceGroupId] = useState(null); // Track source group for cross-group transfers
   const [crossGroupDragTarget, setCrossGroupDragTarget] = useState(null); // Track cross-group drag { groupId, position }
   const [originalListData, setOriginalListData] = useState(null); // Store original state for cross-group drag preview
-  
+  const [groupReordered, setGroupReordered] = useState(false); // Track if groups were reordered during drag
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -159,6 +170,12 @@ export default function AccountList() {
   const collisionDetection = useCallback((args) => {
     const { active } = args;
     const activeParsed = parseDragId(active.id);
+
+    // When dragging a GROUP, use only closestCenter for sortable reordering
+    // Skip group drop zones entirely to prevent self-drop interference
+    if (activeParsed.type === 'group') {
+      return closestCenter(args);
+    }
 
     // Check if we're dragging an account that's in a group
     const isFromGroup = activeParsed.type === 'grouped-account';
@@ -259,6 +276,14 @@ export default function AccountList() {
         setActiveItem({ type: 'account', data: ungroupedItem.account });
         setDragSourceGroupId(null);
       }
+    } else if (parsed.type === 'group') {
+      // Dragging a group
+      const groupItem = listData.items.find(
+        (item) => item.type === 'group' && item.group.id === parsed.groupId
+      );
+      if (groupItem) {
+        setActiveItem({ type: 'group', data: groupItem.group });
+      }
     }
   };
 
@@ -268,6 +293,7 @@ export default function AccountList() {
     setDraggedWithinGroup(null);
     setDragSourceGroupId(null);
     setCrossGroupDragTarget(null);
+    setGroupReordered(false);
     // Restore original state instead of refetching
     if (originalListData) {
       setListData(originalListData);
@@ -282,7 +308,35 @@ export default function AccountList() {
     const activeParsed = parseDragId(active.id);
     const overParsed = parseDragId(over.id);
 
-    // Only handle account drags
+    // Handle GROUP reordering with real-time preview
+    if (activeParsed.type === 'group') {
+      // Only reorder when hovering over another group or ungrouped account in main list
+      if (overParsed.type === 'group' || overParsed.type === 'ungrouped-account') {
+        const activeIdStr = String(active.id);
+        const overIdStr = String(over.id);
+
+        const activeIndex = listData.items.findIndex((item) => {
+          const itemId = item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`;
+          return itemId === activeIdStr;
+        });
+
+        const overIndex = listData.items.findIndex((item) => {
+          const itemId = item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`;
+          return itemId === overIdStr;
+        });
+
+        if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
+          setGroupReordered(true);
+          setListData((prev) => ({
+            ...prev,
+            items: arrayMove([...prev.items], activeIndex, overIndex),
+          }));
+        }
+      }
+      return;
+    }
+
+    // Handle account drags
     if (activeParsed.type !== 'grouped-account' && activeParsed.type !== 'ungrouped-account') {
       return;
     }
@@ -497,11 +551,13 @@ export default function AccountList() {
     const groupIdForReorder = draggedWithinGroup;
     const sourceGroupId = dragSourceGroupId;
     const crossGroupTarget = crossGroupDragTarget;
+    const wasGroupReordered = groupReordered;
     const savedOriginalListData = originalListData; // Save before clearing for use in checks
     setDraggedWithinGroup(null); // Reset the tracking state
     setDragSourceGroupId(null);
     setCrossGroupDragTarget(null);
     setOriginalListData(null); // Clear original state - we're committing the change
+    setGroupReordered(false); // Reset group reorder tracking
 
     // If we reordered within a group during drag, persist the new order
     if (groupIdForReorder !== null) {
@@ -521,6 +577,23 @@ export default function AccountList() {
           setError('Failed to save account order');
           fetchData();
         }
+      }
+      return;
+    }
+
+    // If we reordered groups/main list items during drag, persist the new order
+    if (wasGroupReordered) {
+      const positions = listData.items.map((item, index) => ({
+        id: item.type === 'group' ? item.group.id : item.account.id,
+        position: index + 1,
+        is_group: item.type === 'group',
+      }));
+
+      try {
+        await groupsApi.updatePositions(positions);
+      } catch (err) {
+        setError('Failed to save group order');
+        fetchData();
       }
       return;
     }
@@ -890,6 +963,11 @@ export default function AccountList() {
                   onUpdateBalance={() => { }}
                   onViewHistory={() => { }}
                 />
+              </div>
+            )}
+            {activeItem?.type === 'group' && (
+              <div className="drag-overlay drag-overlay-group">
+                <GroupCardPreview group={activeItem.data} />
               </div>
             )}
           </DragOverlay>
