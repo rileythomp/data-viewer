@@ -2133,3 +2133,166 @@ select.account-select {
 .detail-formula-section .formula-section {
   margin-bottom: 0;
 }
+
+/* Dashboard Styles */
+.dashboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dashboard-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.dashboard-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-text-muted);
+  transform: translateY(-2px);
+}
+
+.dashboard-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.dashboard-card-name {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.dashboard-card-balance {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-success);
+}
+
+.dashboard-card-description {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-3) 0;
+  line-height: 1.5;
+}
+
+.dashboard-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.dashboard-card-count {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Item Selection (for dashboard create/edit) */
+.item-selection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  background-color: var(--color-border-light);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.item-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.item-checkbox:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.item-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.item-checkbox-name {
+  flex: 1;
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+}
+
+/* Dashboard form */
+.dashboard-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Dashboard items list */
+.dashboard-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Detail selection section */
+.detail-selection-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .dashboard-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .pagination {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+}

@@ -287,3 +287,55 @@ export const settingsApi = {
     return res.json();
   },
 };
+
+export const dashboardsApi = {
+  getAll: async (page = 1, pageSize = 20) => {
+    const res = await fetch(`${API_BASE}/dashboards?page=${page}&page_size=${pageSize}`);
+    if (!res.ok) throw new Error('Failed to fetch dashboards');
+    return res.json();
+  },
+
+  getById: async (id) => {
+    const res = await fetch(`${API_BASE}/dashboards/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch dashboard');
+    return res.json();
+  },
+
+  create: async (name, description, accountIds = [], groupIds = []) => {
+    const res = await fetch(`${API_BASE}/dashboards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description,
+        account_ids: accountIds,
+        group_ids: groupIds,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to create dashboard');
+    return res.json();
+  },
+
+  update: async (id, name, description, accountIds = [], groupIds = []) => {
+    const res = await fetch(`${API_BASE}/dashboards/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description,
+        account_ids: accountIds,
+        group_ids: groupIds,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to update dashboard');
+    return res.json();
+  },
+
+  delete: async (id) => {
+    const res = await fetch(`${API_BASE}/dashboards/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete dashboard');
+    return res.json();
+  },
+};

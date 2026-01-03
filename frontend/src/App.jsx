@@ -6,6 +6,9 @@ import AccountList from './components/AccountList'
 import AccountDetail from './components/AccountDetail'
 import GroupDetail from './components/GroupDetail'
 import SettingsPage from './components/SettingsPage'
+import DashboardList from './components/DashboardList'
+import DashboardCreate from './components/DashboardCreate'
+import DashboardDetail from './components/DashboardDetail'
 
 function App() {
   return (
@@ -17,6 +20,9 @@ function App() {
           <Route path="/accounts/:id" element={<AccountDetail />} />
           <Route path="/groups/:id" element={<GroupDetail />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/dashboards" element={<DashboardList />} />
+          <Route path="/dashboards/new" element={<DashboardCreate />} />
+          <Route path="/dashboards/:id" element={<DashboardDetail />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
