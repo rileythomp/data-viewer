@@ -26,7 +26,7 @@ import GroupCard from './GroupCard';
 import AccountForm from './AccountForm';
 import GroupForm from './GroupForm';
 import EditAccountModal from './EditAccountModal';
-import HistoryTable from './HistoryTable';
+import BalanceHistoryModal from './BalanceHistoryModal';
 import SettingsModal from './SettingsModal';
 
 function SortableItem({ item, children }) {
@@ -919,9 +919,10 @@ export default function AccountList() {
       )}
 
       {viewingHistory && (
-        <HistoryTable
-          accountId={viewingHistory.id}
-          accountName={viewingHistory.account_name}
+        <BalanceHistoryModal
+          entityType="account"
+          entityId={viewingHistory.id}
+          entityName={viewingHistory.account_name}
           onClose={() => setViewingHistory(null)}
         />
       )}

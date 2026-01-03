@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { groupsApi } from '../services/api';
+import { accountsApi, groupsApi } from '../services/api';
 import BalanceHistoryTable from './BalanceHistoryTable';
 import BalanceHistoryChart from './BalanceHistoryChart';
 
-export default function GroupHistoryModal({ groupId, groupName, onClose }) {
+export default function BalanceHistoryModal({ entityType, entityId, entityName, onClose }) {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -12,7 +12,9 @@ export default function GroupHistoryModal({ groupId, groupName, onClose }) {
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const data = await groupsApi.getHistory(groupId);
+                const data = entityType === 'account'
+                    ? await accountsApi.getHistory(entityId)
+                    : await groupsApi.getHistory(entityId);
                 setHistory(data || []);
             } catch (err) {
                 setError(err.message);
@@ -21,13 +23,16 @@ export default function GroupHistoryModal({ groupId, groupName, onClose }) {
             }
         };
         fetchHistory();
-    }, [groupId]);
+    }, [entityType, entityId]);
+
+    // Show account name column only for account history (matches previous HistoryTable behavior)
+    const showAccountName = entityType === 'account';
 
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
                 <h3>Balance History</h3>
-                <p className="account-name">{groupName}</p>
+                <p className="account-name">{entityName}</p>
 
                 {loading && <p>Loading...</p>}
                 {error && <div className="error">{error}</div>}
@@ -54,7 +59,7 @@ export default function GroupHistoryModal({ groupId, groupName, onClose }) {
                             {history.length === 0 ? (
                                 <p>No history records found.</p>
                             ) : viewMode === 'table' ? (
-                                <BalanceHistoryTable history={history} showAccountName={false} />
+                                <BalanceHistoryTable history={history} showAccountName={showAccountName} />
                             ) : (
                                 <BalanceHistoryChart history={history} />
                             )}

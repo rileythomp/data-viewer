@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronUp, History } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
-import GroupHistoryModal from './GroupHistoryModal';
+import BalanceHistoryModal from './BalanceHistoryModal';
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -154,9 +154,10 @@ export default function GroupCard({
       )}
 
       {showHistoryModal && (
-        <GroupHistoryModal
-          groupId={group.id}
-          groupName={group.group_name}
+        <BalanceHistoryModal
+          entityType="group"
+          entityId={group.id}
+          entityName={group.group_name}
           onClose={() => setShowHistoryModal(false)}
         />
       )}
