@@ -58,6 +58,7 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/groups/{id}", groupHandler.Delete).Methods("DELETE")
 	api.HandleFunc("/groups/{id}/archive", groupHandler.Archive).Methods("PATCH")
 	api.HandleFunc("/groups/{id}/account-positions", groupHandler.UpdateAccountPositionsInGroup).Methods("PATCH")
+	api.HandleFunc("/groups/{id}/history", groupHandler.GetHistory).Methods("GET")
 
 	// Settings routes
 	api.HandleFunc("/settings/total-formula", settingsHandler.GetTotalFormula).Methods("GET")

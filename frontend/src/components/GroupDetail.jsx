@@ -24,6 +24,8 @@ import EditAccountModal from './EditAccountModal';
 import HistoryTable from './HistoryTable';
 import GroupForm from './GroupForm';
 import FormulaDisplay from './FormulaDisplay';
+import BalanceHistoryChart from './BalanceHistoryChart';
+import BalanceHistoryTable from './BalanceHistoryTable';
 
 function SortableAccountItem({ account, onUpdateBalance, onViewHistory, onRemoveFromGroup }) {
   const {
@@ -65,6 +67,8 @@ export default function GroupDetail() {
   const [editingAccount, setEditingAccount] = useState(null);
   const [viewingHistory, setViewingHistory] = useState(null);
   const [activeId, setActiveId] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [historyViewMode, setHistoryViewMode] = useState('table');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -77,6 +81,16 @@ export default function GroupDetail() {
     })
   );
 
+  const fetchHistory = async () => {
+    try {
+      const data = await groupsApi.getHistory(id);
+      setHistory(data || []);
+    } catch (err) {
+      // History might not exist yet, that's okay
+      setHistory([]);
+    }
+  };
+
   const fetchGroup = async () => {
     try {
       setError('');
@@ -86,6 +100,7 @@ export default function GroupDetail() {
       ]);
       setGroup(data);
       setAllAccounts(accounts);
+      await fetchHistory();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -141,6 +156,7 @@ export default function GroupDetail() {
   const handleUpdateBalance = async (accountId, balance) => {
     await accountsApi.updateBalance(accountId, balance);
     await fetchGroup();
+    await fetchHistory();
   };
 
   const handleRemoveFromGroup = async (account) => {
@@ -321,6 +337,37 @@ export default function GroupDetail() {
                 ) : null}
               </DragOverlay>
             </DndContext>
+          )}
+        </div>
+
+        <div className="detail-history">
+          <div className="history-header">
+            <h2 className="detail-section-title">Balance History</h2>
+            {history.length > 0 && (
+              <div className="view-toggle">
+                <button
+                  className={`view-toggle-btn ${historyViewMode === 'table' ? 'active' : ''}`}
+                  onClick={() => setHistoryViewMode('table')}
+                >
+                  Table
+                </button>
+                <button
+                  className={`view-toggle-btn ${historyViewMode === 'chart' ? 'active' : ''}`}
+                  onClick={() => setHistoryViewMode('chart')}
+                >
+                  Chart
+                </button>
+              </div>
+            )}
+          </div>
+          {history.length === 0 ? (
+            <p className="empty-state-small">No history records yet.</p>
+          ) : historyViewMode === 'table' ? (
+            <div className="history-table-container">
+              <BalanceHistoryTable history={history} showAccountName={false} />
+            </div>
+          ) : (
+            <BalanceHistoryChart history={history} />
           )}
         </div>
       </div>

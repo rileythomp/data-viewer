@@ -602,3 +602,27 @@ func (r *AccountGroupRepository) Delete(id int) error {
 
 	return tx.Commit()
 }
+
+func (r *AccountGroupRepository) GetHistory(groupID int) ([]models.GroupBalanceHistory, error) {
+	query := `
+		SELECT id, group_id, group_name_snapshot, balance, recorded_at
+		FROM group_balance_history
+		WHERE group_id = $1
+		ORDER BY recorded_at DESC
+	`
+	rows, err := r.db.Query(query, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query group history: %w", err)
+	}
+	defer rows.Close()
+
+	var history []models.GroupBalanceHistory
+	for rows.Next() {
+		var h models.GroupBalanceHistory
+		if err := rows.Scan(&h.ID, &h.GroupID, &h.GroupNameSnapshot, &h.Balance, &h.RecordedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan group history: %w", err)
+		}
+		history = append(history, h)
+	}
+	return history, nil
+}

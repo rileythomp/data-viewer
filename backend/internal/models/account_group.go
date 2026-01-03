@@ -91,3 +91,11 @@ type GroupedAccountsResponse struct {
 	TotalBalance       float64             `json:"total_balance"`
 	TotalFormulaConfig *TotalFormulaConfig `json:"total_formula_config,omitempty"`
 }
+
+type GroupBalanceHistory struct {
+	ID                int       `json:"id"`
+	GroupID           int       `json:"group_id"`
+	GroupNameSnapshot string    `json:"group_name_snapshot"`
+	Balance           float64   `json:"balance"`
+	RecordedAt        time.Time `json:"recorded_at"`
+}

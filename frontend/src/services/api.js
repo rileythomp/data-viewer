@@ -108,6 +108,12 @@ export const groupsApi = {
     if (!res.ok) throw new Error('Failed to update account positions');
     return res.json();
   },
+
+  getHistory: async (id) => {
+    const res = await fetch(`${API_BASE}/groups/${id}/history`);
+    if (!res.ok) throw new Error('Failed to fetch group history');
+    return res.json();
+  },
 };
 
 export const accountsApi = {

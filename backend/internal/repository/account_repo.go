@@ -352,17 +352,18 @@ func (r *AccountRepository) UpdateBalance(id int, balance float64) (*models.Acco
 	}
 
 	dependentIDs := validation.FindTransitiveDependents(id, allAccounts)
-	if len(dependentIDs) > 0 {
-		// Build account map and balance map
-		accountMap := make(map[int]*models.Account)
-		balanceMap := make(map[int]float64)
-		for i := range allAccounts {
-			accountMap[allAccounts[i].ID] = &allAccounts[i]
-			balanceMap[allAccounts[i].ID] = allAccounts[i].CurrentBalance
-		}
-		// Update balance map with the new balance for the updated account
-		balanceMap[id] = balance
 
+	// Build account map and balance map (needed for both account and group propagation)
+	accountMap := make(map[int]*models.Account)
+	balanceMap := make(map[int]float64)
+	for i := range allAccounts {
+		accountMap[allAccounts[i].ID] = &allAccounts[i]
+		balanceMap[allAccounts[i].ID] = allAccounts[i].CurrentBalance
+	}
+	// Update balance map with the new balance for the updated account
+	balanceMap[id] = balance
+
+	if len(dependentIDs) > 0 {
 		// Calculate new balances and collect history entries
 		var historyEntries []HistoryEntry
 		for _, depID := range dependentIDs {
@@ -390,6 +391,18 @@ func (r *AccountRepository) UpdateBalance(id int, balance float64) (*models.Acco
 		// Batch insert history records
 		if err := r.insertHistoryRecordsTx(tx, historyEntries); err != nil {
 			return nil, fmt.Errorf("failed to insert dependent history records: %w", err)
+		}
+	}
+
+	// Propagate history to affected groups
+	affectedGroupIDs, err := r.findAffectedGroups(tx, id, dependentIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find affected groups: %w", err)
+	}
+
+	if len(affectedGroupIDs) > 0 {
+		if err := r.insertGroupHistoryRecordsTx(tx, affectedGroupIDs, balanceMap); err != nil {
+			return nil, fmt.Errorf("failed to insert group history records: %w", err)
 		}
 	}
 
@@ -759,5 +772,133 @@ func (r *AccountRepository) insertHistoryRecordsTx(tx *sql.Tx, entries []History
 		}
 	}
 
+	return nil
+}
+
+// findAffectedGroups returns all group IDs affected by an account balance change
+func (r *AccountRepository) findAffectedGroups(tx *sql.Tx, accountID int, dependentAccountIDs []int) ([]int, error) {
+	// Collect all account IDs that changed (original + dependents)
+	changedAccountIDs := append([]int{accountID}, dependentAccountIDs...)
+
+	groupIDSet := make(map[int]bool)
+
+	// Find groups where these accounts are members
+	for _, accID := range changedAccountIDs {
+		rows, err := tx.Query(`
+			SELECT group_id FROM account_group_memberships WHERE account_id = $1
+		`, accID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var groupID int
+			if err := rows.Scan(&groupID); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			groupIDSet[groupID] = true
+		}
+		rows.Close()
+	}
+
+	// Find calculated groups whose formula references any of these accounts
+	rows, err := tx.Query(`
+		SELECT id, formula FROM account_groups
+		WHERE is_calculated = true AND formula IS NOT NULL AND is_archived = false
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var groupID int
+		var formulaJSON []byte
+		if err := rows.Scan(&groupID, &formulaJSON); err != nil {
+			return nil, err
+		}
+
+		var formula []models.FormulaItem
+		if err := json.Unmarshal(formulaJSON, &formula); err != nil {
+			continue
+		}
+
+		for _, item := range formula {
+			for _, accID := range changedAccountIDs {
+				if item.AccountID == accID {
+					groupIDSet[groupID] = true
+					break
+				}
+			}
+		}
+	}
+
+	// Convert set to slice
+	var groupIDs []int
+	for id := range groupIDSet {
+		groupIDs = append(groupIDs, id)
+	}
+	return groupIDs, nil
+}
+
+// insertGroupHistoryRecordsTx inserts history records for multiple groups
+func (r *AccountRepository) insertGroupHistoryRecordsTx(tx *sql.Tx, groupIDs []int, balanceMap map[int]float64) error {
+	for _, groupID := range groupIDs {
+		// Get group info
+		var groupName string
+		var isCalculated bool
+		var formulaJSON []byte
+
+		err := tx.QueryRow(`
+			SELECT group_name, is_calculated, formula
+			FROM account_groups WHERE id = $1 AND is_archived = false
+		`, groupID).Scan(&groupName, &isCalculated, &formulaJSON)
+		if err == sql.ErrNoRows {
+			continue // Skip archived groups
+		}
+		if err != nil {
+			return err
+		}
+
+		// Calculate group balance
+		var totalBalance float64
+		if isCalculated && len(formulaJSON) > 0 {
+			var formula []models.FormulaItem
+			json.Unmarshal(formulaJSON, &formula)
+			for _, item := range formula {
+				if balance, ok := balanceMap[item.AccountID]; ok {
+					totalBalance += item.Coefficient * balance
+				}
+			}
+		} else {
+			// Sum of member account balances
+			memberRows, err := tx.Query(`
+				SELECT account_id FROM account_group_memberships WHERE group_id = $1
+			`, groupID)
+			if err != nil {
+				return err
+			}
+			for memberRows.Next() {
+				var accountID int
+				if err := memberRows.Scan(&accountID); err != nil {
+					memberRows.Close()
+					return err
+				}
+				if balance, ok := balanceMap[accountID]; ok {
+					totalBalance += balance
+				}
+			}
+			memberRows.Close()
+		}
+
+		// Insert history record
+		_, err = tx.Exec(`
+			INSERT INTO group_balance_history (group_id, group_name_snapshot, balance)
+			VALUES ($1, $2, $3)
+		`, groupID, groupName, totalBalance)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
