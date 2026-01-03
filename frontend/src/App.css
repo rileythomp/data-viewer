@@ -2736,6 +2736,7 @@ select.account-select {
   padding: var(--space-3);
   background-color: var(--color-background);
   border-radius: var(--radius-md);
+}
 
 /* Upload Progress */
 .upload-progress-section {
