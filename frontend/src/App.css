@@ -1923,7 +1923,3 @@ select.account-select {
 .settings-modal .toggle-switch {
   margin-bottom: 0;
 }
-
-.settings-modal .formula-section {
-  padding: var(--space-4);
-}
