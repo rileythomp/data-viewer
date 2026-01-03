@@ -411,16 +411,37 @@ export const uploadsApi = {
     return res.json();
   },
 
-  create: async (formData) => {
-    const res = await fetch(`${API_BASE}/uploads`, {
-      method: 'POST',
-      body: formData,
+  create: async (formData, onProgress) => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && onProgress) {
+          const percentComplete = Math.round((e.loaded / e.total) * 100);
+          onProgress(percentComplete);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 201 || xhr.status === 202) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve({ data, status: xhr.status });
+          } catch (e) {
+            reject(new Error('Invalid response from server'));
+          }
+        } else {
+          reject(new Error(xhr.responseText || 'Failed to create upload'));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error occurred'));
+      });
+
+      xhr.open('POST', `${API_BASE}/uploads`);
+      xhr.send(formData);
     });
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(errorText || 'Failed to create upload');
-    }
-    return res.json();
   },
 
   delete: async (id) => {

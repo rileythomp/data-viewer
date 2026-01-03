@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload, X } from 'lucide-react';
+import { ArrowLeft, Upload, X, Loader } from 'lucide-react';
 import { uploadsApi } from '../services/api';
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB (increased from 10MB)
 
 export default function UploadCreate() {
     const navigate = useNavigate();
@@ -14,6 +14,34 @@ export default function UploadCreate() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [isDragging, setIsDragging] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [processingStatus, setProcessingStatus] = useState(null); // null, 'uploading', 'processing', 'completed', 'failed'
+    const [pendingUploadId, setPendingUploadId] = useState(null);
+
+    // Poll for upload status when processing
+    useEffect(() => {
+        if (processingStatus !== 'processing' || !pendingUploadId) return;
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const upload = await uploadsApi.getById(pendingUploadId);
+                if (upload.status === 'completed') {
+                    setProcessingStatus('completed');
+                    clearInterval(pollInterval);
+                    navigate(`/uploads/${pendingUploadId}`);
+                } else if (upload.status === 'failed') {
+                    setProcessingStatus('failed');
+                    setError(upload.error_message || 'Processing failed');
+                    setSubmitting(false);
+                    clearInterval(pollInterval);
+                }
+            } catch (err) {
+                console.error('Error polling upload status:', err);
+            }
+        }, 1000);
+
+        return () => clearInterval(pollInterval);
+    }, [processingStatus, pendingUploadId, navigate]);
 
     const validateAndSetFile = (file) => {
         // Validate file type
@@ -30,7 +58,7 @@ export default function UploadCreate() {
 
         // Validate file size
         if (file.size > MAX_FILE_SIZE) {
-            setError('File too large. Maximum size is 10MB.');
+            setError('File too large. Maximum size is 50MB.');
             return;
         }
 
@@ -100,6 +128,8 @@ export default function UploadCreate() {
 
         setSubmitting(true);
         setError('');
+        setUploadProgress(0);
+        setProcessingStatus('uploading');
 
         try {
             const formData = new FormData();
@@ -107,11 +137,22 @@ export default function UploadCreate() {
             formData.append('description', description.trim());
             formData.append('file', selectedFile);
 
-            const upload = await uploadsApi.create(formData);
-            navigate(`/uploads/${upload.id}`);
+            const { data: upload, status } = await uploadsApi.create(formData, (progress) => {
+                setUploadProgress(progress);
+            });
+
+            if (status === 202) {
+                // Async processing - poll for completion
+                setPendingUploadId(upload.id);
+                setProcessingStatus('processing');
+            } else {
+                // Sync processing - navigate immediately
+                navigate(`/uploads/${upload.id}`);
+            }
         } catch (err) {
             setError(err.message);
             setSubmitting(false);
+            setProcessingStatus(null);
         }
     };
 
@@ -184,7 +225,7 @@ export default function UploadCreate() {
                                     Click to select or drag and drop
                                 </span>
                                 <span className="file-upload-hint">
-                                    CSV or JSON files up to 10MB
+                                    CSV or JSON files up to 50MB
                                 </span>
                             </label>
                         ) : (
@@ -200,6 +241,7 @@ export default function UploadCreate() {
                                     onClick={handleRemoveFile}
                                     className="btn-icon"
                                     title="Remove file"
+                                    disabled={submitting}
                                 >
                                     <X size={18} />
                                 </button>
@@ -207,11 +249,37 @@ export default function UploadCreate() {
                         )}
                     </div>
 
+                    {/* Progress indicator */}
+                    {submitting && (
+                        <div className="upload-progress-section">
+                            {processingStatus === 'uploading' && (
+                                <>
+                                    <div className="progress-bar-container">
+                                        <div
+                                            className="progress-bar-fill"
+                                            style={{ width: `${uploadProgress}%` }}
+                                        />
+                                    </div>
+                                    <span className="progress-text">
+                                        Uploading... {uploadProgress}%
+                                    </span>
+                                </>
+                            )}
+                            {processingStatus === 'processing' && (
+                                <div className="processing-indicator">
+                                    <Loader size={20} className="spin" />
+                                    <span>Processing file...</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="form-actions">
                         <button
                             type="button"
                             onClick={() => navigate('/uploads')}
                             className="btn-secondary"
+                            disabled={submitting}
                         >
                             Cancel
                         </button>
@@ -220,7 +288,7 @@ export default function UploadCreate() {
                             className="btn-primary"
                             disabled={submitting || !selectedFile}
                         >
-                            {submitting ? 'Uploading...' : 'Upload'}
+                            {submitting ? (processingStatus === 'processing' ? 'Processing...' : 'Uploading...') : 'Upload'}
                         </button>
                     </div>
                 </form>

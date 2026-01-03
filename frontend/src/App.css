@@ -2736,6 +2736,30 @@ select.account-select {
   padding: var(--space-3);
   background-color: var(--color-background);
   border-radius: var(--radius-md);
+
+/* Upload Progress */
+.upload-progress-section {
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background-color: var(--color-border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: var(--space-2);
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
 }
@@ -2885,11 +2909,44 @@ select.account-select {
 }
 
 /* Spinning animation */
+
+.processing-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.processing-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+  text-align: center;
+  color: var(--color-text-secondary);
+  gap: var(--space-2);
+}
+
+.processing-placeholder p {
+  margin: 0;
+}
+
+.processing-hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+/* Spinner animation */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);
   }
-
   to {
     transform: rotate(360deg);
   }
@@ -2915,4 +2972,30 @@ select.account-select {
   font-size: 0.8125rem;
   color: var(--color-text-muted);
   margin-bottom: var(--space-3);
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: var(--radius-full);
+  margin-left: var(--space-2);
+}
+
+.status-processing {
+  background-color: var(--color-warning-bg, #fef3cd);
+  color: var(--color-warning, #856404);
+}
+
+.status-failed {
+  background-color: var(--color-danger-bg, #f8d7da);
+  color: var(--color-danger);
+}
+
+.upload-error {
+  margin-bottom: var(--space-4);
 }
