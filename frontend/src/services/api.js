@@ -391,3 +391,43 @@ export const chartsApi = {
     return res.json();
   },
 };
+
+export const uploadsApi = {
+  getAll: async (page = 1, pageSize = 20) => {
+    const res = await fetch(`${API_BASE}/uploads?page=${page}&page_size=${pageSize}`);
+    if (!res.ok) throw new Error('Failed to fetch uploads');
+    return res.json();
+  },
+
+  getById: async (id) => {
+    const res = await fetch(`${API_BASE}/uploads/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch upload');
+    return res.json();
+  },
+
+  getData: async (id, page = 1, pageSize = 50) => {
+    const res = await fetch(`${API_BASE}/uploads/${id}/data?page=${page}&page_size=${pageSize}`);
+    if (!res.ok) throw new Error('Failed to fetch upload data');
+    return res.json();
+  },
+
+  create: async (formData) => {
+    const res = await fetch(`${API_BASE}/uploads`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || 'Failed to create upload');
+    }
+    return res.json();
+  },
+
+  delete: async (id) => {
+    const res = await fetch(`${API_BASE}/uploads/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete upload');
+    return res.json();
+  },
+};

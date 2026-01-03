@@ -12,6 +12,9 @@ import DashboardDetail from './components/DashboardDetail'
 import ChartList from './components/ChartList'
 import ChartCreate from './components/ChartCreate'
 import ChartDetail from './components/ChartDetail'
+import UploadList from './components/UploadList'
+import UploadCreate from './components/UploadCreate'
+import UploadDetail from './components/UploadDetail'
 
 function App() {
   return (
@@ -29,6 +32,9 @@ function App() {
           <Route path="/charts" element={<ChartList />} />
           <Route path="/charts/new" element={<ChartCreate />} />
           <Route path="/charts/:id" element={<ChartDetail />} />
+          <Route path="/uploads" element={<UploadList />} />
+          <Route path="/uploads/new" element={<UploadCreate />} />
+          <Route path="/uploads/:id" element={<UploadDetail />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

@@ -20,11 +20,13 @@ func New(db *sql.DB) *mux.Router {
 	settingsRepo := repository.NewSettingsRepository(db)
 	dashboardRepo := repository.NewDashboardRepository(db)
 	chartRepo := repository.NewChartRepository(db)
+	uploadRepo := repository.NewUploadRepository(db)
 	accountHandler := handlers.NewAccountHandler(accountRepo, membershipRepo)
 	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
 	settingsHandler := handlers.NewSettingsHandler(settingsRepo)
 	dashboardHandler := handlers.NewDashboardHandler(dashboardRepo)
 	chartHandler := handlers.NewChartHandler(chartRepo)
+	uploadHandler := handlers.NewUploadHandler(uploadRepo)
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
@@ -81,6 +83,13 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/charts/{id}", chartHandler.GetByID).Methods("GET")
 	api.HandleFunc("/charts/{id}", chartHandler.Update).Methods("PATCH")
 	api.HandleFunc("/charts/{id}", chartHandler.Delete).Methods("DELETE")
+
+	// Upload routes
+	api.HandleFunc("/uploads", uploadHandler.GetAll).Methods("GET")
+	api.HandleFunc("/uploads", uploadHandler.Create).Methods("POST")
+	api.HandleFunc("/uploads/{id}", uploadHandler.GetByID).Methods("GET")
+	api.HandleFunc("/uploads/{id}", uploadHandler.Delete).Methods("DELETE")
+	api.HandleFunc("/uploads/{id}/data", uploadHandler.GetData).Methods("GET")
 
 	return r
 }
