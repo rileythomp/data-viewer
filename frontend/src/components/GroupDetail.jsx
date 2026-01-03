@@ -58,6 +58,7 @@ export default function GroupDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [group, setGroup] = useState(null);
+  const [allAccounts, setAllAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -79,8 +80,12 @@ export default function GroupDetail() {
   const fetchGroup = async () => {
     try {
       setError('');
-      const data = await groupsApi.getById(id);
+      const [data, accounts] = await Promise.all([
+        groupsApi.getById(id),
+        accountsApi.getAll()
+      ]);
       setGroup(data);
+      setAllAccounts(accounts);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -99,8 +104,20 @@ export default function GroupDetail() {
     }).format(amount);
   };
 
-  const handleUpdateGroup = async (name, description, color, isCalculated, formula) => {
+  const handleUpdateGroup = async (name, description, color, isCalculated, formula, accountIds = []) => {
     await groupsApi.update(id, name, description, color, isCalculated, formula);
+
+    const currentAccountIds = (group.accounts || []).map(a => a.id);
+    const accountsToAdd = accountIds.filter(accId => !currentAccountIds.includes(accId));
+    const accountsToRemove = currentAccountIds.filter(accId => !accountIds.includes(accId));
+
+    for (const accountId of accountsToRemove) {
+      await accountsApi.setGroup(accountId, null);
+    }
+    for (let i = 0; i < accountsToAdd.length; i++) {
+      await accountsApi.setGroup(accountsToAdd[i], parseInt(id));
+    }
+
     await fetchGroup();
     setIsEditing(false);
   };
@@ -312,6 +329,7 @@ export default function GroupDetail() {
             <GroupForm
               initialData={group}
               accounts={group.accounts || []}
+              allAccounts={allAccounts}
               onSubmit={handleUpdateGroup}
               onCancel={() => setIsEditing(false)}
             />

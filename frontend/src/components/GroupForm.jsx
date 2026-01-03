@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calculator } from 'lucide-react';
+import { Calculator, X } from 'lucide-react';
 import FormulaDisplay from './FormulaDisplay';
 
 const COLOR_PRESETS = [
@@ -13,7 +13,7 @@ const COLOR_PRESETS = [
   '#84cc16', // lime
 ];
 
-export default function GroupForm({ onSubmit, onCancel, initialData = null, accounts = [] }) {
+export default function GroupForm({ onSubmit, onCancel, initialData = null, accounts = [], allAccounts = [] }) {
   const [groupName, setGroupName] = useState(initialData?.group_name || '');
   const [groupDescription, setGroupDescription] = useState(initialData?.group_description || '');
   const [color, setColor] = useState(initialData?.color || COLOR_PRESETS[0]);
@@ -30,6 +30,28 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, acco
     }
     return [];
   });
+  const [selectedAccounts, setSelectedAccounts] = useState(() => {
+    if (initialData?.accounts && Array.isArray(initialData.accounts)) {
+      return initialData.accounts;
+    }
+    return [];
+  });
+
+  // Filter to show accounts not already selected for this group
+  const availableAccounts = allAccounts.filter(a => {
+    return !selectedAccounts.some(sa => sa.id === a.id);
+  });
+
+  const handleAddAccount = (accountId) => {
+    if (!accountId) return;
+    const account = allAccounts.find(a => a.id === parseInt(accountId));
+    if (!account) return;
+    setSelectedAccounts([...selectedAccounts, account]);
+  };
+
+  const handleRemoveAccount = (accountId) => {
+    setSelectedAccounts(selectedAccounts.filter(a => a.id !== accountId));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,8 +73,10 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, acco
       coefficient: item.coefficient
     })) : null;
 
+    const accountIds = selectedAccounts.map(a => a.id);
+
     try {
-      await onSubmit(groupName.trim(), groupDescription.trim(), color, isCalculated, formulaData);
+      await onSubmit(groupName.trim(), groupDescription.trim(), color, isCalculated, formulaData, accountIds);
     } catch (err) {
       setError(err.message);
       setIsSubmitting(false);
@@ -103,6 +127,46 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, acco
           ))}
         </div>
       </div>
+
+      {allAccounts.length > 0 && (
+        <div className="form-group">
+          <label>Accounts</label>
+          {selectedAccounts.length > 0 && (
+            <div className="selected-accounts-list">
+              {selectedAccounts.map((account) => (
+                <div key={account.id} className="selected-account-item">
+                  <span className="selected-account-name">{account.account_name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAccount(account.id)}
+                    className="btn-icon-small"
+                    aria-label={`Remove ${account.account_name}`}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {availableAccounts.length > 0 && (
+            <select
+              value=""
+              onChange={(e) => handleAddAccount(e.target.value)}
+              className="account-select"
+            >
+              <option value="">Select account to add...</option>
+              {availableAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.account_name}
+                </option>
+              ))}
+            </select>
+          )}
+          {availableAccounts.length === 0 && selectedAccounts.length === 0 && (
+            <p className="form-hint">No accounts available to add.</p>
+          )}
+        </div>
+      )}
 
       {initialData && accounts && accounts.length > 0 && (
         <>

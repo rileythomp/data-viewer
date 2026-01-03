@@ -11,7 +11,6 @@ export default function FormulaDisplay({
   currentAccountId = null,
   allAccounts = null,
 }) {
-  const [selectedAccountId, setSelectedAccountId] = useState('');
   const [coefficient, setCoefficient] = useState('1');
   const [validationError, setValidationError] = useState('');
 
@@ -56,10 +55,10 @@ export default function FormulaDisplay({
     }, 0);
   };
 
-  const handleAddFormulaItem = () => {
-    if (!selectedAccountId || !onChange) return;
+  const handleAddFormulaItem = (accountId) => {
+    if (!accountId || !onChange) return;
     const coef = parseFloat(coefficient) || 1;
-    const account = accounts.find(a => a.id === parseInt(selectedAccountId));
+    const account = accounts.find(a => a.id === parseInt(accountId));
     if (!account) return;
 
     const normalized = formulaItems.map(normalizeItem);
@@ -90,7 +89,6 @@ export default function FormulaDisplay({
       coefficient: coef
     }];
     onChange(newItems);
-    setSelectedAccountId('');
     setCoefficient('1');
   };
 
@@ -162,8 +160,8 @@ export default function FormulaDisplay({
           />
           <span className="formula-multiply">×</span>
           <select
-            value={selectedAccountId}
-            onChange={(e) => setSelectedAccountId(e.target.value)}
+            value=""
+            onChange={(e) => handleAddFormulaItem(e.target.value)}
             className="formula-account-select"
           >
             <option value="">Select account...</option>
@@ -174,14 +172,6 @@ export default function FormulaDisplay({
               ))
             }
           </select>
-          <button
-            type="button"
-            onClick={handleAddFormulaItem}
-            className="btn-small btn-primary"
-            disabled={!selectedAccountId}
-          >
-            Add
-          </button>
         </div>
       )}
 

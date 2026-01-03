@@ -516,8 +516,14 @@ export default function AccountList() {
     setShowAddAccountForm(false);
   };
 
-  const handleCreateGroup = async (name, description, color) => {
-    await groupsApi.create(name, description, color);
+  const handleCreateGroup = async (name, description, color, isCalculated, formula, accountIds = []) => {
+    const newGroup = await groupsApi.create(name, description, color, isCalculated, formula);
+
+    // Associate selected accounts with the new group
+    for (let i = 0; i < accountIds.length; i++) {
+      await accountsApi.setGroup(accountIds[i], newGroup.id, i + 1);
+    }
+
     await fetchData();
     setShowAddGroupForm(false);
   };
@@ -529,8 +535,20 @@ export default function AccountList() {
     setEditingAccount(null);
   };
 
-  const handleUpdateGroup = async (name, description, color, isCalculated, formula) => {
+  const handleUpdateGroup = async (name, description, color, isCalculated, formula, accountIds = []) => {
     await groupsApi.update(editingGroup.id, name, description, color, isCalculated, formula);
+
+    const currentAccountIds = (editingGroup.accounts || []).map(a => a.id);
+    const accountsToAdd = accountIds.filter(id => !currentAccountIds.includes(id));
+    const accountsToRemove = currentAccountIds.filter(id => !accountIds.includes(id));
+
+    for (const accountId of accountsToRemove) {
+      await accountsApi.setGroup(accountId, null);
+    }
+    for (let i = 0; i < accountsToAdd.length; i++) {
+      await accountsApi.setGroup(accountsToAdd[i], editingGroup.id);
+    }
+
     await fetchData();
     setEditingGroup(null);
   };
@@ -597,6 +615,7 @@ export default function AccountList() {
         <GroupForm
           onSubmit={handleCreateGroup}
           onCancel={() => setShowAddGroupForm(false)}
+          allAccounts={allAccounts}
         />
       )}
 
@@ -676,6 +695,7 @@ export default function AccountList() {
             <GroupForm
               initialData={editingGroup}
               accounts={editingGroup.accounts || []}
+              allAccounts={allAccounts}
               onSubmit={handleUpdateGroup}
               onCancel={() => setEditingGroup(null)}
             />
