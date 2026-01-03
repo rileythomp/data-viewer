@@ -9,7 +9,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import AccountCard from './AccountCard';
 
-function SortableAccountInGroup({ account, groupId, onUpdateBalance, onViewHistory }) {
+function SortableAccountInGroup({ account, groupId, onUpdateBalance, onViewHistory, crossGroupDragAccountId }) {
   // Use composite ID (groupId-accountId) so accounts in multiple groups have unique sortable IDs
   const {
     attributes,
@@ -20,10 +20,13 @@ function SortableAccountInGroup({ account, groupId, onUpdateBalance, onViewHisto
     isDragging,
   } = useSortable({ id: `group-${groupId}-account-${account.id}` });
 
+  // Hide if this is the cross-group drag placeholder (account being dragged from another group)
+  const isPlaceholder = account.id === crossGroupDragAccountId;
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0 : 1,
+    opacity: isDragging || isPlaceholder ? 0 : 1,
     zIndex: isDragging ? 1000 : 'auto',
   };
 
@@ -44,6 +47,7 @@ export default function GroupCard({
   onToggleExpand,
   onUpdateBalance,
   onViewHistory,
+  crossGroupDragAccountId,
 }) {
   const navigate = useNavigate();
 
@@ -76,7 +80,7 @@ export default function GroupCard({
   return (
     <div
       ref={setDroppableRef}
-      className={`group-card ${isOver ? 'group-card-drop-target' : ''}`}
+      className="group-card"
     >
       <div
         className="group-color-indicator"
@@ -103,7 +107,7 @@ export default function GroupCard({
         </div>
       </div>
       {isExpanded && (
-        <div className={`group-content group-content-expanded ${isOver ? 'group-content-over' : ''}`}>
+        <div className="group-content group-content-expanded">
           {group.accounts && group.accounts.length > 0 ? (
             <SortableContext
               items={group.accounts.map((a) => `group-${group.id}-account-${a.id}`)}
@@ -117,6 +121,7 @@ export default function GroupCard({
                     groupId={group.id}
                     onUpdateBalance={onUpdateBalance}
                     onViewHistory={onViewHistory}
+                    crossGroupDragAccountId={crossGroupDragAccountId}
                   />
                 ))}
               </div>

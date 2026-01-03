@@ -1322,15 +1322,7 @@
   display: block;
 }
 
-/* Drop Target Styling */
-.group-card-drop-target {
-  box-shadow: 0 0 0 2px var(--color-primary);
-  transition: box-shadow 150ms ease;
-}
-
-.group-content-over {
-  background-color: var(--color-primary-light);
-}
+/* Drop Target Styling - removed blue highlights, accounts now shift to show drop position */
 
 .group-content-drop-hint {
   padding: var(--space-3) var(--space-5);
