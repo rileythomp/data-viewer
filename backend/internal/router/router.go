@@ -19,10 +19,12 @@ func New(db *sql.DB) *mux.Router {
 	membershipRepo := repository.NewMembershipRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
 	dashboardRepo := repository.NewDashboardRepository(db)
+	chartRepo := repository.NewChartRepository(db)
 	accountHandler := handlers.NewAccountHandler(accountRepo, membershipRepo)
 	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
 	settingsHandler := handlers.NewSettingsHandler(settingsRepo)
 	dashboardHandler := handlers.NewDashboardHandler(dashboardRepo)
+	chartHandler := handlers.NewChartHandler(chartRepo)
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
@@ -72,6 +74,13 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/dashboards/{id}", dashboardHandler.GetByID).Methods("GET")
 	api.HandleFunc("/dashboards/{id}", dashboardHandler.Update).Methods("PATCH")
 	api.HandleFunc("/dashboards/{id}", dashboardHandler.Delete).Methods("DELETE")
+
+	// Chart routes
+	api.HandleFunc("/charts", chartHandler.GetAll).Methods("GET")
+	api.HandleFunc("/charts", chartHandler.Create).Methods("POST")
+	api.HandleFunc("/charts/{id}", chartHandler.GetByID).Methods("GET")
+	api.HandleFunc("/charts/{id}", chartHandler.Update).Methods("PATCH")
+	api.HandleFunc("/charts/{id}", chartHandler.Delete).Methods("DELETE")
 
 	return r
 }

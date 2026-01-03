@@ -9,6 +9,9 @@ import SettingsPage from './components/SettingsPage'
 import DashboardList from './components/DashboardList'
 import DashboardCreate from './components/DashboardCreate'
 import DashboardDetail from './components/DashboardDetail'
+import ChartList from './components/ChartList'
+import ChartCreate from './components/ChartCreate'
+import ChartDetail from './components/ChartDetail'
 
 function App() {
   return (
@@ -23,6 +26,9 @@ function App() {
           <Route path="/dashboards" element={<DashboardList />} />
           <Route path="/dashboards/new" element={<DashboardCreate />} />
           <Route path="/dashboards/:id" element={<DashboardDetail />} />
+          <Route path="/charts" element={<ChartList />} />
+          <Route path="/charts/new" element={<ChartCreate />} />
+          <Route path="/charts/:id" element={<ChartDetail />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

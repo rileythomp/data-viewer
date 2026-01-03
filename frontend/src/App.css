@@ -2332,3 +2332,22 @@ select.account-select {
     gap: var(--space-3);
   }
 }
+
+/* Chart Container */
+.chart-container {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  margin-top: var(--space-6);
+}
+
+.recharts-legend-item-text {
+  color: var(--color-text-primary) !important;
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    padding: var(--space-4);
+  }
+}
