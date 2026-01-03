@@ -13,6 +13,15 @@ export default function FormulaDisplay({ formulaItems, accounts, totalBalance })
     return account?.account_name || 'Unknown Account';
   };
 
+  const formatCoefficient = (coefficient) => {
+    const absCoeff = Math.abs(coefficient);
+    // Omit coefficient display if it's 1
+    if (absCoeff === 1) {
+      return '';
+    }
+    return `${absCoeff} x`;
+  };
+
   if (!formulaItems || formulaItems.length === 0) {
     return null;
   }
@@ -23,21 +32,23 @@ export default function FormulaDisplay({ formulaItems, accounts, totalBalance })
         <Calculator size={16} />
         <span>Calculated Balance</span>
       </div>
-      <div className="formula-items">
-        {formulaItems.map((item, index) => (
-          <div key={item.account_id} className="formula-item">
-            <span className="formula-item-text">
-              {index > 0 && (
-                <span className="formula-operator">
-                  {item.coefficient >= 0 ? '+' : ''}
-                </span>
-              )}
-              <span className="formula-coefficient">{item.coefficient}</span>
-              <span className="formula-multiply">×</span>
-              <span className="formula-account">{getAccountName(item.account_id)}</span>
-            </span>
-          </div>
-        ))}
+      <div className="formula-items formula-items-vertical">
+        {formulaItems.map((item, index) => {
+          const isPositive = item.coefficient >= 0;
+          const coeffDisplay = formatCoefficient(item.coefficient);
+
+          return (
+            <div key={item.account_id} className="formula-item-row">
+              <span className={`formula-sign ${isPositive ? 'formula-sign-plus' : 'formula-sign-minus'}`}>
+                {index === 0 && isPositive ? '' : (isPositive ? '+' : '−')}
+              </span>
+              <span className="formula-term">
+                {coeffDisplay && <span className="formula-coefficient">{coeffDisplay}&nbsp;</span>}
+                <span className="formula-account">{getAccountName(item.account_id)}</span>
+              </span>
+            </div>
+          );
+        })}
         <div className="formula-result">
           = <span className="formula-result-value">{formatCurrency(totalBalance)}</span>
         </div>

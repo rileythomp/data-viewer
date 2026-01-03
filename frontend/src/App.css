@@ -618,6 +618,49 @@
   color: var(--color-success);
 }
 
+/* Vertical formula display */
+.formula-items-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.formula-item-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.formula-sign {
+  width: 1.25rem;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.formula-sign-plus {
+  color: var(--color-success);
+}
+
+.formula-sign-minus {
+  color: var(--color-danger);
+}
+
+.formula-term {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.formula-items-vertical .formula-coefficient {
+  min-width: auto;
+  margin-right: 0;
+}
+
+.formula-items-vertical .formula-account {
+  font-weight: 500;
+}
+
 /* Formula Add Row */
 .formula-add {
   display: flex;
