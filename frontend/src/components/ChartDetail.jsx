@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { chartsApi, accountsApi, groupsApi } from '../services/api';
 import InlineEditableText from './InlineEditableText';
+import ChartLineView from './ChartLineView';
 
 const RADIAN = Math.PI / 180;
 const MIN_LABEL_PERCENT = 0.05; // 5% minimum to show label
@@ -57,6 +58,9 @@ export default function ChartDetail() {
   const [allGroups, setAllGroups] = useState([]);
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
+  const [viewMode, setViewMode] = useState('pie');
+  const [historyData, setHistoryData] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const fetchChart = async () => {
     try {
@@ -93,9 +97,23 @@ export default function ChartDetail() {
     }
   };
 
+  const fetchHistory = async () => {
+    try {
+      setHistoryLoading(true);
+      const data = await chartsApi.getHistory(id);
+      setHistoryData(data);
+    } catch (err) {
+      // Silently fail - history will just show empty state
+      setHistoryData({ series: [] });
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchChart();
     fetchSelectionData();
+    fetchHistory();
   }, [id]);
 
   const formatCurrency = (amount) => {
@@ -274,40 +292,67 @@ export default function ChartDetail() {
       )}
 
       {chart.pie_data && chart.pie_data.length > 0 ? (
-        <div className="chart-container">
-          <ResponsiveContainer width="100%" height={400}>
-            <PieChart>
-              <Pie
-                data={chart.pie_data}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={120}
-                label={renderCustomizedLabel}
-                labelLine={(props) => {
-                  if (props.percent < MIN_LABEL_PERCENT) return null;
-                  return (
-                    <path
-                      d={`M${props.points[0].x},${props.points[0].y}L${props.points[1].x},${props.points[1].y}`}
-                      stroke="var(--color-text-muted)"
-                      fill="none"
-                    />
-                  );
-                }}
+        <>
+          <div className="chart-view-toggle">
+            <div className="view-toggle">
+              <button
+                className={`view-toggle-btn ${viewMode === 'pie' ? 'active' : ''}`}
+                onClick={() => setViewMode('pie')}
               >
-                {chart.pie_data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                wrapperStyle={{ paddingTop: 20 }}
-                formatter={(value) => <span style={{ marginRight: 16 }}>{value}</span>}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+                Pie
+              </button>
+              <button
+                className={`view-toggle-btn ${viewMode === 'line' ? 'active' : ''}`}
+                onClick={() => setViewMode('line')}
+              >
+                Line
+              </button>
+            </div>
+          </div>
+
+          {viewMode === 'pie' ? (
+            <div className="chart-container">
+              <ResponsiveContainer width="100%" height={400}>
+                <PieChart>
+                  <Pie
+                    data={chart.pie_data}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={120}
+                    label={renderCustomizedLabel}
+                    labelLine={(props) => {
+                      if (props.percent < MIN_LABEL_PERCENT) return null;
+                      return (
+                        <path
+                          d={`M${props.points[0].x},${props.points[0].y}L${props.points[1].x},${props.points[1].y}`}
+                          stroke="var(--color-text-muted)"
+                          fill="none"
+                        />
+                      );
+                    }}
+                  >
+                    {chart.pie_data.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend
+                    wrapperStyle={{ paddingTop: 20 }}
+                    formatter={(value) => <span style={{ marginRight: 16 }}>{value}</span>}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : historyLoading ? (
+            <div className="loading">Loading history data...</div>
+          ) : historyData ? (
+            <ChartLineView historyData={historyData} />
+          ) : (
+            <p className="empty-state">No history data available for line chart.</p>
+          )}
+        </>
       ) : (
         <p className="empty-state">No items in this chart yet. Click edit to add accounts and groups.</p>
       )}

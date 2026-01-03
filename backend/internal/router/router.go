@@ -81,6 +81,7 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/charts/{id}", chartHandler.GetByID).Methods("GET")
 	api.HandleFunc("/charts/{id}", chartHandler.Update).Methods("PATCH")
 	api.HandleFunc("/charts/{id}", chartHandler.Delete).Methods("DELETE")
+	api.HandleFunc("/charts/{id}/history", chartHandler.GetHistory).Methods("GET")
 
 	return r
 }

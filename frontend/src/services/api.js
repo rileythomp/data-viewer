@@ -353,6 +353,12 @@ export const chartsApi = {
     return res.json();
   },
 
+  getHistory: async (id) => {
+    const res = await fetch(`${API_BASE}/charts/${id}/history`);
+    if (!res.ok) throw new Error('Failed to fetch chart history');
+    return res.json();
+  },
+
   create: async (name, description, accountIds = [], groupIds = []) => {
     const res = await fetch(`${API_BASE}/charts`, {
       method: 'POST',

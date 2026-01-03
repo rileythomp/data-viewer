@@ -55,3 +55,20 @@ type ChartListResponse struct {
 	Page     int              `json:"page"`
 	PageSize int              `json:"page_size"`
 }
+
+type ChartHistoryEntry struct {
+	Date    string  `json:"date"`
+	Balance float64 `json:"balance"`
+}
+
+type ChartHistorySeries struct {
+	ID      int                 `json:"id"`
+	Name    string              `json:"name"`
+	Color   string              `json:"color"`
+	Type    string              `json:"type"` // "account" or "group"
+	History []ChartHistoryEntry `json:"history"`
+}
+
+type ChartHistoryResponse struct {
+	Series []ChartHistorySeries `json:"series"`
+}

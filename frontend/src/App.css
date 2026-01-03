@@ -1940,6 +1940,12 @@ select.account-select {
   margin: 0;
 }
 
+.chart-view-toggle {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-4);
+}
+
 .view-toggle {
   display: flex;
   gap: var(--space-1);
