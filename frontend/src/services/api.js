@@ -263,3 +263,21 @@ export const accountsApi = {
     return res.json();
   },
 };
+
+export const settingsApi = {
+  getTotalFormula: async () => {
+    const res = await fetch(`${API_BASE}/settings/total-formula`);
+    if (!res.ok) throw new Error('Failed to fetch total formula');
+    return res.json();
+  },
+
+  updateTotalFormula: async (isEnabled, formula) => {
+    const res = await fetch(`${API_BASE}/settings/total-formula`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_enabled: isEnabled, formula }),
+    });
+    if (!res.ok) throw new Error('Failed to update total formula');
+    return res.json();
+  },
+};

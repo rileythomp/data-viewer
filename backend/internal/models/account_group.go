@@ -87,6 +87,7 @@ type ListItem struct {
 }
 
 type GroupedAccountsResponse struct {
-	Items        []ListItem `json:"items"`
-	TotalBalance float64    `json:"total_balance"`
+	Items              []ListItem          `json:"items"`
+	TotalBalance       float64             `json:"total_balance"`
+	TotalFormulaConfig *TotalFormulaConfig `json:"total_formula_config,omitempty"`
 }
