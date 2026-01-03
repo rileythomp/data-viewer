@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { X, Calculator } from 'lucide-react';
+import { Calculator } from 'lucide-react';
+import FormulaDisplay from './FormulaDisplay';
 
 const COLOR_PRESETS = [
   '#3b82f6', // blue
@@ -29,42 +30,6 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, acco
     }
     return [];
   });
-  const [selectedAccountId, setSelectedAccountId] = useState('');
-  const [coefficient, setCoefficient] = useState('1');
-
-  const handleAddFormulaItem = () => {
-    if (!selectedAccountId) return;
-    const coef = parseFloat(coefficient) || 1;
-    const account = accounts.find(a => a.id === parseInt(selectedAccountId));
-    if (!account) return;
-
-    // Check if account already in formula
-    if (formulaItems.some(item => item.accountId === account.id)) {
-      setError('Account already in formula');
-      return;
-    }
-
-    setFormulaItems([...formulaItems, {
-      accountId: account.id,
-      accountName: account.account_name,
-      coefficient: coef
-    }]);
-    setSelectedAccountId('');
-    setCoefficient('1');
-    setError('');
-  };
-
-  const handleRemoveFormulaItem = (accountId) => {
-    setFormulaItems(formulaItems.filter(item => item.accountId !== accountId));
-  };
-
-  const calculateBalance = () => {
-    return formulaItems.reduce((sum, item) => {
-      const account = accounts.find(a => a.id === item.accountId);
-      if (!account) return sum;
-      return sum + (item.coefficient * account.current_balance);
-    }, 0);
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -162,74 +127,12 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, acco
           </div>
 
           {isCalculated && (
-            <div className="formula-section">
-              <label>Formula</label>
-
-              {formulaItems.length > 0 && (
-                <div className="formula-items">
-                  {formulaItems.map((item, index) => (
-                    <div key={item.accountId} className="formula-item">
-                      <span className="formula-item-text">
-                        {index > 0 && <span className="formula-operator">{item.coefficient >= 0 ? '+' : ''}</span>}
-                        <span className="formula-coefficient">{item.coefficient}</span>
-                        <span className="formula-multiply">×</span>
-                        <span className="formula-account">{item.accountName}</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFormulaItem(item.accountId)}
-                        className="btn-icon-small"
-                        aria-label="Remove from formula"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  <div className="formula-result">
-                    = <span className="formula-result-value">
-                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(calculateBalance())}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {accounts.length > 0 ? (
-                <div className="formula-add">
-                  <input
-                    type="number"
-                    step="any"
-                    value={coefficient}
-                    onChange={(e) => setCoefficient(e.target.value)}
-                    placeholder="Coefficient"
-                    className="formula-coefficient-input"
-                  />
-                  <span className="formula-multiply">×</span>
-                  <select
-                    value={selectedAccountId}
-                    onChange={(e) => setSelectedAccountId(e.target.value)}
-                    className="formula-account-select"
-                  >
-                    <option value="">Select account...</option>
-                    {accounts
-                      .filter(a => !formulaItems.some(item => item.accountId === a.id))
-                      .map(a => (
-                        <option key={a.id} value={a.id}>{a.account_name}</option>
-                      ))
-                    }
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddFormulaItem}
-                    className="btn-small btn-primary"
-                    disabled={!selectedAccountId}
-                  >
-                    Add
-                  </button>
-                </div>
-              ) : (
-                <p className="form-hint">No accounts in this group yet.</p>
-              )}
-            </div>
+            <FormulaDisplay
+              formulaItems={formulaItems}
+              accounts={accounts}
+              editable={true}
+              onChange={setFormulaItems}
+            />
           )}
         </>
       )}

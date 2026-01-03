@@ -1,6 +1,16 @@
-import { Calculator } from 'lucide-react';
+import { useState } from 'react';
+import { Calculator, X } from 'lucide-react';
 
-export default function FormulaDisplay({ formulaItems, accounts, totalBalance }) {
+export default function FormulaDisplay({
+  formulaItems,
+  accounts,
+  totalBalance,
+  editable = false,
+  onChange
+}) {
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [coefficient, setCoefficient] = useState('1');
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -22,7 +32,60 @@ export default function FormulaDisplay({ formulaItems, accounts, totalBalance })
     return `${absCoeff} x`;
   };
 
-  if (!formulaItems || formulaItems.length === 0) {
+  // Normalize formula items to handle both formats:
+  // - Display mode: {account_id, coefficient}
+  // - Edit mode: {accountId, accountName, coefficient}
+  const normalizeItem = (item) => {
+    return {
+      accountId: item.accountId ?? item.account_id,
+      coefficient: item.coefficient
+    };
+  };
+
+  const calculateBalance = () => {
+    if (!formulaItems || !accounts) return 0;
+    return formulaItems.reduce((sum, item) => {
+      const normalized = normalizeItem(item);
+      const account = accounts.find(a => a.id === normalized.accountId);
+      if (!account) return sum;
+      return sum + (normalized.coefficient * account.current_balance);
+    }, 0);
+  };
+
+  const handleAddFormulaItem = () => {
+    if (!selectedAccountId || !onChange) return;
+    const coef = parseFloat(coefficient) || 1;
+    const account = accounts.find(a => a.id === parseInt(selectedAccountId));
+    if (!account) return;
+
+    const normalized = formulaItems.map(normalizeItem);
+    // Check if account already in formula
+    if (normalized.some(item => item.accountId === account.id)) {
+      return;
+    }
+
+    const newItems = [...formulaItems, {
+      accountId: account.id,
+      accountName: account.account_name,
+      coefficient: coef
+    }];
+    onChange(newItems);
+    setSelectedAccountId('');
+    setCoefficient('1');
+  };
+
+  const handleRemoveFormulaItem = (accountId) => {
+    if (!onChange) return;
+    const newItems = formulaItems.filter(item => {
+      const normalized = normalizeItem(item);
+      return normalized.accountId !== accountId;
+    });
+    onChange(newItems);
+  };
+
+  const displayBalance = editable ? calculateBalance() : totalBalance;
+
+  if (!editable && (!formulaItems || formulaItems.length === 0)) {
     return null;
   }
 
@@ -30,29 +93,83 @@ export default function FormulaDisplay({ formulaItems, accounts, totalBalance })
     <div className="formula-section formula-display">
       <div className="formula-header">
         <Calculator size={16} />
-        <span>Calculated Balance</span>
+        <span>{editable ? 'Formula' : 'Calculated Balance'}</span>
       </div>
-      <div className="formula-items formula-items-vertical">
-        {formulaItems.map((item, index) => {
-          const isPositive = item.coefficient >= 0;
-          const coeffDisplay = formatCoefficient(item.coefficient);
 
-          return (
-            <div key={item.account_id} className="formula-item-row">
-              <span className={`formula-sign ${isPositive ? 'formula-sign-plus' : 'formula-sign-minus'}`}>
-                {index === 0 && isPositive ? '' : (isPositive ? '+' : '−')}
-              </span>
-              <span className="formula-term">
-                {coeffDisplay && <span className="formula-coefficient">{coeffDisplay}&nbsp;</span>}
-                <span className="formula-account">{getAccountName(item.account_id)}</span>
-              </span>
-            </div>
-          );
-        })}
-        <div className="formula-result">
-          = <span className="formula-result-value">{formatCurrency(totalBalance)}</span>
+      {formulaItems && formulaItems.length > 0 && (
+        <div className="formula-items formula-items-vertical">
+          {formulaItems.map((item, index) => {
+            const normalized = normalizeItem(item);
+            const isPositive = normalized.coefficient >= 0;
+            const coeffDisplay = formatCoefficient(normalized.coefficient);
+            const accountName = item.accountName || getAccountName(normalized.accountId);
+
+            return (
+              <div key={normalized.accountId} className="formula-item-row">
+                <span className={`formula-sign ${isPositive ? 'formula-sign-plus' : 'formula-sign-minus'}`}>
+                  {index === 0 && isPositive ? '' : (isPositive ? '+' : '−')}
+                </span>
+                <span className="formula-term">
+                  {coeffDisplay && <span className="formula-coefficient">{coeffDisplay}&nbsp;</span>}
+                  <span className="formula-account">{accountName}</span>
+                </span>
+                {editable && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFormulaItem(normalized.accountId)}
+                    className="btn-icon-small"
+                    aria-label="Remove from formula"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <div className="formula-result">
+            = <span className="formula-result-value">{formatCurrency(displayBalance)}</span>
+          </div>
         </div>
-      </div>
+      )}
+
+      {editable && accounts && accounts.length > 0 && (
+        <div className="formula-add">
+          <input
+            type="number"
+            step="any"
+            value={coefficient}
+            onChange={(e) => setCoefficient(e.target.value)}
+            placeholder="Coefficient"
+            className="formula-coefficient-input"
+          />
+          <span className="formula-multiply">×</span>
+          <select
+            value={selectedAccountId}
+            onChange={(e) => setSelectedAccountId(e.target.value)}
+            className="formula-account-select"
+          >
+            <option value="">Select account...</option>
+            {accounts
+              .filter(a => !formulaItems?.some(item => normalizeItem(item).accountId === a.id))
+              .map(a => (
+                <option key={a.id} value={a.id}>{a.account_name}</option>
+              ))
+            }
+          </select>
+          <button
+            type="button"
+            onClick={handleAddFormulaItem}
+            className="btn-small btn-primary"
+            disabled={!selectedAccountId}
+          >
+            Add
+          </button>
+        </div>
+      )}
+
+      {editable && (!accounts || accounts.length === 0) && (
+        <p className="form-hint">No accounts available. Create regular accounts first.</p>
+      )}
     </div>
   );
 }
