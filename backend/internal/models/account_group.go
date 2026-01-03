@@ -22,8 +22,8 @@ type AccountGroup struct {
 
 type AccountGroupWithAccounts struct {
 	AccountGroup
-	TotalBalance float64   `json:"total_balance"`
-	Accounts     []Account `json:"accounts"`
+	TotalBalance float64          `json:"total_balance"`
+	Accounts     []AccountInGroup `json:"accounts"`
 }
 
 type CreateGroupRequest struct {
@@ -55,6 +55,19 @@ type GroupPosition struct {
 type SetAccountGroupRequest struct {
 	GroupID         *int `json:"group_id"`
 	PositionInGroup *int `json:"position_in_group,omitempty"`
+}
+
+// ModifyGroupMembershipRequest handles add/remove/move operations
+type ModifyGroupMembershipRequest struct {
+	Action          string `json:"action"`                       // "add", "remove", or "move"
+	GroupID         int    `json:"group_id"`                     // Target group for add/move
+	SourceGroupID   *int   `json:"source_group_id,omitempty"`    // Source group for move
+	PositionInGroup *int   `json:"position_in_group,omitempty"`  // Optional position
+}
+
+// SetGroupMembershipsRequest sets all group memberships at once
+type SetGroupMembershipsRequest struct {
+	GroupIDs []int `json:"group_ids"`
 }
 
 type UpdateAccountPositionsInGroupRequest struct {

@@ -16,7 +16,8 @@ func New(db *sql.DB) *mux.Router {
 	// Initialize repositories and handlers
 	accountRepo := repository.NewAccountRepository(db)
 	groupRepo := repository.NewAccountGroupRepository(db)
-	accountHandler := handlers.NewAccountHandler(accountRepo)
+	membershipRepo := repository.NewMembershipRepository(db)
+	accountHandler := handlers.NewAccountHandler(accountRepo, membershipRepo)
 	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
 
 	// API routes
@@ -37,7 +38,8 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/accounts/{id}/balance", accountHandler.UpdateBalance).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}/archive", accountHandler.Archive).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}/history", accountHandler.GetHistory).Methods("GET")
-	api.HandleFunc("/accounts/{id}/group", accountHandler.SetGroup).Methods("PATCH")
+	api.HandleFunc("/accounts/{id}/membership", accountHandler.ModifyGroupMembership).Methods("PATCH")
+	api.HandleFunc("/accounts/{id}/groups", accountHandler.SetGroupMemberships).Methods("PUT")
 	api.HandleFunc("/accounts/{id}/formula", accountHandler.UpdateFormula).Methods("PATCH")
 
 	// Group routes

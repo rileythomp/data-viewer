@@ -9,7 +9,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import AccountCard from './AccountCard';
 
-function SortableAccountInGroup({ account, onUpdateBalance, onViewHistory }) {
+function SortableAccountInGroup({ account, groupId, onUpdateBalance, onViewHistory }) {
+  // Use composite ID (groupId-accountId) so accounts in multiple groups have unique sortable IDs
   const {
     attributes,
     listeners,
@@ -17,7 +18,7 @@ function SortableAccountInGroup({ account, onUpdateBalance, onViewHistory }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: `account-${account.id}` });
+  } = useSortable({ id: `group-${groupId}-account-${account.id}` });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -105,14 +106,15 @@ export default function GroupCard({
         <div className={`group-content group-content-expanded ${isOver ? 'group-content-over' : ''}`}>
           {group.accounts && group.accounts.length > 0 ? (
             <SortableContext
-              items={group.accounts.map((a) => `account-${a.id}`)}
+              items={group.accounts.map((a) => `group-${group.id}-account-${a.id}`)}
               strategy={verticalListSortingStrategy}
             >
               <div className="group-accounts">
                 {group.accounts.map((account) => (
                   <SortableAccountInGroup
-                    key={account.id}
+                    key={`${group.id}-${account.id}`}
                     account={account}
+                    groupId={group.id}
                     onUpdateBalance={onUpdateBalance}
                     onViewHistory={onViewHistory}
                   />

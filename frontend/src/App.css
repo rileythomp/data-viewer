@@ -1097,6 +1097,59 @@
   color: var(--color-primary);
 }
 
+/* Multi-select group UI */
+.groups-multi-select {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.group-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.group-checkbox:hover {
+  background-color: var(--color-border-light);
+}
+
+.group-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.group-checkbox .group-color-dot {
+  flex-shrink: 0;
+}
+
+.group-checkbox-name {
+  flex: 1;
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+}
+
+.group-checkbox .btn-icon-small {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.group-checkbox .btn-icon-small:hover {
+  background-color: var(--color-border);
+  color: var(--color-primary);
+}
+
 .detail-history {
   background: var(--color-surface);
   border-radius: var(--radius-lg);
@@ -1486,26 +1539,24 @@
 /* Account Selection in GroupForm */
 .selected-accounts-list {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
-  padding: var(--space-3);
-  background-color: var(--color-border-light);
-  border-radius: var(--radius-md);
 }
 
 .selected-account-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background-color: var(--color-surface);
-  border-radius: var(--radius-sm);
+  background-color: var(--color-border-light);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
 }
 
 .selected-account-name {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--color-text-primary);
 }
@@ -1516,19 +1567,97 @@
   gap: var(--space-2);
 }
 
-.account-select {
-  flex: 1;
+select.account-select {
+  width: auto;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-family: inherit;
   font-size: 0.875rem;
+  color: var(--color-text-secondary);
   background-color: var(--color-surface);
-  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
 .account-select:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-light);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.account-select:hover {
+  border-color: var(--color-text-muted);
+}
+
+/* Group Tags for Account Detail */
+.group-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.group-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-border-light);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+}
+
+.group-tag-name {
+  color: var(--color-text-primary);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.group-tag-name:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.group-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background-color: transparent;
+  color: var(--color-text-muted);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.group-tag-remove:hover {
+  background-color: var(--color-danger-light);
+  color: var(--color-danger);
+}
+
+.group-add-dropdown {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.group-add-dropdown:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.group-add-dropdown:hover {
+  border-color: var(--color-text-muted);
 }

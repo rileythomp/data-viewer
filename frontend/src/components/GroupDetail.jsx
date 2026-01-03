@@ -111,11 +111,13 @@ export default function GroupDetail() {
     const accountsToAdd = accountIds.filter(accId => !currentAccountIds.includes(accId));
     const accountsToRemove = currentAccountIds.filter(accId => !accountIds.includes(accId));
 
+    // Remove accounts from this group (keeps other group memberships)
     for (const accountId of accountsToRemove) {
-      await accountsApi.setGroup(accountId, null);
+      await accountsApi.modifyGroupMembership(accountId, 'remove', parseInt(id));
     }
+    // Add accounts to this group
     for (let i = 0; i < accountsToAdd.length; i++) {
-      await accountsApi.setGroup(accountsToAdd[i], parseInt(id));
+      await accountsApi.modifyGroupMembership(accountsToAdd[i], 'add', parseInt(id));
     }
 
     await fetchGroup();
@@ -142,8 +144,8 @@ export default function GroupDetail() {
   };
 
   const handleRemoveFromGroup = async (account) => {
-    if (window.confirm(`Remove "${account.account_name}" from this group?`)) {
-      await accountsApi.setGroup(account.id, null);
+    if (window.confirm(`Remove "${account.account_name}" from this group? It will remain in any other groups.`)) {
+      await accountsApi.modifyGroupMembership(account.id, 'remove', parseInt(id));
       await fetchGroup();
     }
   };

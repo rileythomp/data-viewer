@@ -13,11 +13,12 @@ import (
 )
 
 type AccountHandler struct {
-	repo *repository.AccountRepository
+	repo           *repository.AccountRepository
+	membershipRepo *repository.MembershipRepository
 }
 
-func NewAccountHandler(repo *repository.AccountRepository) *AccountHandler {
-	return &AccountHandler{repo: repo}
+func NewAccountHandler(repo *repository.AccountRepository, membershipRepo *repository.MembershipRepository) *AccountHandler {
+	return &AccountHandler{repo: repo, membershipRepo: membershipRepo}
 }
 
 func (h *AccountHandler) GetAll(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +245,8 @@ func (h *AccountHandler) UpdatePositions(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func (h *AccountHandler) SetGroup(w http.ResponseWriter, r *http.Request) {
+// ModifyGroupMembership handles add/remove/move operations for group membership
+func (h *AccountHandler) ModifyGroupMembership(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
@@ -252,13 +254,66 @@ func (h *AccountHandler) SetGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req models.SetAccountGroupRequest
+	var req models.ModifyGroupMembershipRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	account, err := h.repo.SetGroup(id, req.GroupID, req.PositionInGroup)
+	switch req.Action {
+	case "add":
+		err = h.membershipRepo.AddToGroup(id, req.GroupID, req.PositionInGroup)
+	case "remove":
+		err = h.membershipRepo.RemoveFromGroup(id, req.GroupID)
+	case "move":
+		err = h.membershipRepo.MoveGroup(id, req.SourceGroupID, req.GroupID, req.PositionInGroup)
+	default:
+		http.Error(w, "Invalid action. Must be 'add', 'remove', or 'move'", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated account
+	account, err := h.repo.GetByID(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if account == nil {
+		http.Error(w, "Account not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(account)
+}
+
+// SetGroupMemberships replaces all group memberships for an account
+func (h *AccountHandler) SetGroupMemberships(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid account ID", http.StatusBadRequest)
+		return
+	}
+
+	var req models.SetGroupMembershipsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.membershipRepo.SetGroupMemberships(id, req.GroupIDs); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated account
+	account, err := h.repo.GetByID(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -174,17 +174,35 @@ export const accountsApi = {
     return res.json();
   },
 
-  setGroup: async (id, groupId, positionInGroup = null) => {
-    const payload = { group_id: groupId };
+  // Modify group membership (add/remove/move)
+  modifyGroupMembership: async (id, action, groupId, sourceGroupId = null, positionInGroup = null) => {
+    const payload = {
+      action,  // "add", "remove", or "move"
+      group_id: groupId
+    };
+    if (sourceGroupId !== null) {
+      payload.source_group_id = sourceGroupId;
+    }
     if (positionInGroup !== null) {
       payload.position_in_group = positionInGroup;
     }
-    const res = await fetch(`${API_BASE}/accounts/${id}/group`, {
+    const res = await fetch(`${API_BASE}/accounts/${id}/membership`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error('Failed to set account group');
+    if (!res.ok) throw new Error('Failed to modify group membership');
+    return res.json();
+  },
+
+  // Set all group memberships at once (for multi-select UI)
+  setGroupMemberships: async (id, groupIds) => {
+    const res = await fetch(`${API_BASE}/accounts/${id}/groups`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_ids: groupIds }),
+    });
+    if (!res.ok) throw new Error('Failed to set group memberships');
     return res.json();
   },
 

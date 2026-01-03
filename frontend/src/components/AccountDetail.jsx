@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Archive, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Pencil, Archive, ExternalLink, X } from 'lucide-react';
 import { accountsApi, groupsApi } from '../services/api';
 import EditAccountModal from './EditAccountModal';
 import BalanceHistoryTable from './BalanceHistoryTable';
@@ -100,19 +100,33 @@ export default function AccountDetail() {
     }
   };
 
-  const handleGroupChange = async (e) => {
-    const newGroupId = e.target.value === '' ? null : parseInt(e.target.value, 10);
+  const handleAddToGroup = async (groupId) => {
     try {
-      await accountsApi.setGroup(account.id, newGroupId);
+      await accountsApi.modifyGroupMembership(account.id, 'add', groupId);
       await fetchAccount();
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const getCurrentGroup = () => {
-    if (!account?.group_id) return null;
-    return groups.find(g => g.id === account.group_id);
+  const handleRemoveFromGroup = async (groupId) => {
+    try {
+      await accountsApi.modifyGroupMembership(account.id, 'remove', groupId);
+      await fetchAccount();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const getAvailableGroups = () => {
+    if (!groups || groups.length === 0) return [];
+    const currentGroupIds = account?.group_ids || [];
+    return groups.filter(g => !currentGroupIds.includes(g.id));
+  };
+
+  const getAccountGroups = () => {
+    if (!account?.group_ids || account.group_ids.length === 0) return [];
+    return groups.filter(g => account.group_ids.includes(g.id));
   };
 
   const handleBalanceClick = () => {
@@ -223,36 +237,52 @@ export default function AccountDetail() {
           )}
 
           <div className="detail-group-section">
-            <span className="detail-group-label">Group</span>
-            <div className="detail-group-controls">
-              {getCurrentGroup() && (
-                <span
-                  className="group-color-dot"
-                  style={{ backgroundColor: getCurrentGroup().color }}
-                />
-              )}
+            <span className="detail-group-label">Groups</span>
+            <div className="group-tags-container">
+              {getAccountGroups().map(group => (
+                <div key={group.id} className="group-tag">
+                  <span
+                    className="group-color-dot"
+                    style={{ backgroundColor: group.color }}
+                  />
+                  <span
+                    className="group-tag-name"
+                    onClick={() => navigate(`/groups/${group.id}`)}
+                    title="View group"
+                  >
+                    {group.group_name}
+                  </span>
+                  <button
+                    onClick={() => handleRemoveFromGroup(group.id)}
+                    className="group-tag-remove"
+                    title="Remove from group"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            {getAvailableGroups().length > 0 && (
               <select
-                value={account.group_id || ''}
-                onChange={handleGroupChange}
-                className="group-select"
+                className="group-add-dropdown"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleAddToGroup(parseInt(e.target.value));
+                  }
+                }}
               >
-                <option value="">None</option>
-                {groups.map(group => (
+                <option value="">Add to group...</option>
+                {getAvailableGroups().map(group => (
                   <option key={group.id} value={group.id}>
                     {group.group_name}
                   </option>
                 ))}
               </select>
-              {getCurrentGroup() && (
-                <button
-                  onClick={() => navigate(`/groups/${account.group_id}`)}
-                  className="btn-icon btn-icon-small"
-                  title="View group"
-                >
-                  <ExternalLink size={14} />
-                </button>
-              )}
-            </div>
+            )}
+            {groups.length === 0 && (
+              <p className="empty-state-small">No groups available</p>
+            )}
           </div>
 
           {account.account_info && (

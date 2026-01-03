@@ -3,18 +3,23 @@ package models
 import "time"
 
 type Account struct {
-	ID              int           `json:"id"`
-	AccountName     string        `json:"account_name"`
-	AccountInfo     string        `json:"account_info"`
-	CurrentBalance  float64       `json:"current_balance"`
-	IsArchived      bool          `json:"is_archived"`
-	Position        int           `json:"position"`
-	GroupID         *int          `json:"group_id"`
-	PositionInGroup int           `json:"position_in_group"`
-	IsCalculated    bool          `json:"is_calculated"`
-	Formula         []FormulaItem `json:"formula,omitempty"`
-	CreatedAt       time.Time     `json:"created_at"`
-	UpdatedAt       time.Time     `json:"updated_at"`
+	ID             int           `json:"id"`
+	AccountName    string        `json:"account_name"`
+	AccountInfo    string        `json:"account_info"`
+	CurrentBalance float64       `json:"current_balance"`
+	IsArchived     bool          `json:"is_archived"`
+	Position       int           `json:"position"`
+	GroupIDs       []int         `json:"group_ids"`
+	IsCalculated   bool          `json:"is_calculated"`
+	Formula        []FormulaItem `json:"formula,omitempty"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+}
+
+// AccountInGroup represents an account within a specific group context
+type AccountInGroup struct {
+	Account
+	PositionInGroup int `json:"position_in_group"`
 }
 
 type BalanceHistory struct {
