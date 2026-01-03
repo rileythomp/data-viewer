@@ -546,7 +546,6 @@
 .formula-section {
   background-color: var(--color-border-light);
   border-radius: var(--radius-md);
-  padding: var(--space-4);
   margin-bottom: var(--space-4);
 }
 
@@ -1036,7 +1035,6 @@
 }
 
 .detail-info-section {
-  padding-top: var(--space-6);
   border-top: 1px solid var(--color-border-light);
 }
 
@@ -1054,7 +1052,6 @@
   font-size: 1rem;
   color: var(--color-text-secondary);
   margin: 0;
-  padding: var(--space-4);
   background-color: var(--color-border-light);
   border-radius: var(--radius-md);
   white-space: pre-wrap;
@@ -1062,7 +1059,7 @@
 }
 
 .detail-group-section {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
 }
 
 .detail-group-label {
