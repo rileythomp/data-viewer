@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Archive } from 'lucide-react';
-import { accountsApi } from '../services/api';
+import { ArrowLeft, Pencil, Archive, ExternalLink } from 'lucide-react';
+import { accountsApi, groupsApi } from '../services/api';
 import EditAccountModal from './EditAccountModal';
 import BalanceHistoryTable from './BalanceHistoryTable';
 
@@ -15,6 +15,7 @@ export default function AccountDetail() {
   const [editingAccount, setEditingAccount] = useState(null);
   const [isEditingBalance, setIsEditingBalance] = useState(false);
   const [balanceValue, setBalanceValue] = useState('');
+  const [groups, setGroups] = useState([]);
   const inputRef = useRef(null);
 
   const fetchAccount = async () => {
@@ -37,10 +38,19 @@ export default function AccountDetail() {
     }
   };
 
+  const fetchGroups = async () => {
+    try {
+      const data = await groupsApi.getAll();
+      setGroups(data || []);
+    } catch (err) {
+      // Groups might not exist, that's okay
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      await Promise.all([fetchAccount(), fetchHistory()]);
+      await Promise.all([fetchAccount(), fetchHistory(), fetchGroups()]);
       setLoading(false);
     };
     fetchData();
@@ -71,6 +81,21 @@ export default function AccountDetail() {
       await accountsApi.archive(account.id);
       navigate('/');
     }
+  };
+
+  const handleGroupChange = async (e) => {
+    const newGroupId = e.target.value === '' ? null : parseInt(e.target.value, 10);
+    try {
+      await accountsApi.setGroup(account.id, newGroupId);
+      await fetchAccount();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const getCurrentGroup = () => {
+    if (!account?.group_id) return null;
+    return groups.find(g => g.id === account.group_id);
   };
 
   const handleBalanceClick = () => {
@@ -170,6 +195,39 @@ export default function AccountDetail() {
                 {formatCurrency(account.current_balance)}
               </p>
             )}
+          </div>
+
+          <div className="detail-group-section">
+            <span className="detail-group-label">Group</span>
+            <div className="detail-group-controls">
+              {getCurrentGroup() && (
+                <span
+                  className="group-color-dot"
+                  style={{ backgroundColor: getCurrentGroup().color }}
+                />
+              )}
+              <select
+                value={account.group_id || ''}
+                onChange={handleGroupChange}
+                className="group-select"
+              >
+                <option value="">None</option>
+                {groups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.group_name}
+                  </option>
+                ))}
+              </select>
+              {getCurrentGroup() && (
+                <button
+                  onClick={() => navigate(`/groups/${account.group_id}`)}
+                  className="btn-icon btn-icon-small"
+                  title="View group"
+                >
+                  <ExternalLink size={14} />
+                </button>
+              )}
+            </div>
           </div>
 
           {account.account_info && (
