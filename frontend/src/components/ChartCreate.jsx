@@ -1,0 +1,178 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { chartsApi, accountsApi, groupsApi } from '../services/api';
+
+export default function ChartCreate() {
+  const navigate = useNavigate();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedAccounts, setSelectedAccounts] = useState([]);
+  const [selectedGroups, setSelectedGroups] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [accountsData, groupsData] = await Promise.all([
+          accountsApi.getAll(),
+          groupsApi.getAll(),
+        ]);
+        setAccounts(accountsData || []);
+        setGroups(groupsData || []);
+      } catch (err) {
+        setError('Failed to load data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const handleAccountToggle = (accountId) => {
+    setSelectedAccounts(prev =>
+      prev.includes(accountId)
+        ? prev.filter(id => id !== accountId)
+        : [...prev, accountId]
+    );
+  };
+
+  const handleGroupToggle = (groupId) => {
+    setSelectedGroups(prev =>
+      prev.includes(groupId)
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId]
+    );
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError('Chart name is required');
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+
+    try {
+      const chart = await chartsApi.create(
+        name.trim(),
+        description.trim(),
+        selectedAccounts,
+        selectedGroups
+      );
+      navigate(`/charts/${chart.id}`);
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="loading">Loading...</div>;
+  }
+
+  return (
+    <div className="app">
+      <div className="detail-header">
+        <button onClick={() => navigate('/charts')} className="btn-back">
+          <ArrowLeft size={18} />
+          <span>Back</span>
+        </button>
+      </div>
+
+      <div className="detail-main">
+        <h1 className="detail-title">Create Chart</h1>
+
+        {error && <div className="error">{error}</div>}
+
+        <form onSubmit={handleSubmit} className="dashboard-form">
+          <div className="form-group">
+            <label htmlFor="name">Name *</label>
+            <input
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My Chart"
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="description">Description</label>
+            <textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description..."
+              rows={3}
+            />
+          </div>
+
+          {accounts.length > 0 && (
+            <div className="form-group">
+              <label>Accounts</label>
+              <div className="item-selection">
+                {accounts.map((account) => (
+                  <label key={account.id} className="item-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedAccounts.includes(account.id)}
+                      onChange={() => handleAccountToggle(account.id)}
+                    />
+                    <span className="item-checkbox-name">{account.account_name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {groups.length > 0 && (
+            <div className="form-group">
+              <label>Groups</label>
+              <div className="item-selection">
+                {groups.map((group) => (
+                  <label key={group.id} className="item-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedGroups.includes(group.id)}
+                      onChange={() => handleGroupToggle(group.id)}
+                    />
+                    <div
+                      className="group-color-dot"
+                      style={{ backgroundColor: group.color }}
+                    />
+                    <span className="item-checkbox-name">{group.group_name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="form-actions">
+            <button
+              type="button"
+              onClick={() => navigate('/charts')}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={submitting}
+            >
+              {submitting ? 'Creating...' : 'Create Chart'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

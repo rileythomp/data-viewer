@@ -339,3 +339,55 @@ export const dashboardsApi = {
     return res.json();
   },
 };
+
+export const chartsApi = {
+  getAll: async (page = 1, pageSize = 20) => {
+    const res = await fetch(`${API_BASE}/charts?page=${page}&page_size=${pageSize}`);
+    if (!res.ok) throw new Error('Failed to fetch charts');
+    return res.json();
+  },
+
+  getById: async (id) => {
+    const res = await fetch(`${API_BASE}/charts/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch chart');
+    return res.json();
+  },
+
+  create: async (name, description, accountIds = [], groupIds = []) => {
+    const res = await fetch(`${API_BASE}/charts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description,
+        account_ids: accountIds,
+        group_ids: groupIds,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to create chart');
+    return res.json();
+  },
+
+  update: async (id, name, description, accountIds = [], groupIds = []) => {
+    const res = await fetch(`${API_BASE}/charts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description,
+        account_ids: accountIds,
+        group_ids: groupIds,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to update chart');
+    return res.json();
+  },
+
+  delete: async (id) => {
+    const res = await fetch(`${API_BASE}/charts/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete chart');
+    return res.json();
+  },
+};

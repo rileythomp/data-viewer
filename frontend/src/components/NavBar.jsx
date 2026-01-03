@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Settings, LayoutDashboard } from 'lucide-react';
+import { Settings, LayoutDashboard, PieChart } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 export default function NavBar() {
@@ -11,6 +11,9 @@ export default function NavBar() {
       <div className="navbar-actions">
         <Link to="/dashboards" className="btn-icon" title="Dashboards">
           <LayoutDashboard size={18} />
+        </Link>
+        <Link to="/charts" className="btn-icon" title="Charts">
+          <PieChart size={18} />
         </Link>
         <Link to="/settings" className="btn-icon" title="Settings">
           <Settings size={18} />
