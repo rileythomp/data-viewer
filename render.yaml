@@ -38,8 +38,9 @@ services:
         value: "8080"
 
   # React Frontend (Static Site)
-  - type: static
+  - type: web
     name: finance-tracker-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
