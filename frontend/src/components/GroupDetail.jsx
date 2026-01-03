@@ -21,7 +21,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { groupsApi, accountsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import EditAccountModal from './EditAccountModal';
-import HistoryTable from './HistoryTable';
+import BalanceHistoryModal from './BalanceHistoryModal';
 import GroupForm from './GroupForm';
 import FormulaDisplay from './FormulaDisplay';
 import BalanceHistoryChart from './BalanceHistoryChart';
@@ -395,9 +395,10 @@ export default function GroupDetail() {
       )}
 
       {viewingHistory && (
-        <HistoryTable
-          accountId={viewingHistory.id}
-          accountName={viewingHistory.account_name}
+        <BalanceHistoryModal
+          entityType="account"
+          entityId={viewingHistory.id}
+          entityName={viewingHistory.account_name}
           onClose={() => setViewingHistory(null)}
         />
       )}
