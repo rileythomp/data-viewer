@@ -1,17 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, ArchiveRestore, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Trash2, Plus } from 'lucide-react';
 import { accountsApi, groupsApi } from '../services/api';
 import DeleteConfirmModal from './DeleteConfirmModal';
+import AccountForm from './AccountForm';
+import GroupForm from './GroupForm';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('accounts');
   const [accounts, setAccounts] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [activeAccounts, setActiveAccounts] = useState([]); // Non-archived accounts for form dropdowns
+  const [activeGroups, setActiveGroups] = useState([]); // Non-archived groups for form dropdowns
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, item: null, type: null });
+  const [showAccountForm, setShowAccountForm] = useState(false);
+  const [showGroupForm, setShowGroupForm] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -20,12 +26,16 @@ export default function SettingsPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [accountsData, groupsData] = await Promise.all([
+      const [accountsData, groupsData, activeAccountsData, activeGroupsData] = await Promise.all([
         accountsApi.getAllIncludingArchived(),
         groupsApi.getAllIncludingArchived(),
+        accountsApi.getAll(),
+        groupsApi.getAll(),
       ]);
       setAccounts(accountsData);
       setGroups(groupsData);
+      setActiveAccounts(activeAccountsData);
+      setActiveGroups(activeGroupsData);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -91,6 +101,34 @@ export default function SettingsPage() {
     setDeleteModal({ isOpen: false, item: null, type: null });
   };
 
+  const handleCreateAccount = async (name, info, balance, calculatedData, groupId) => {
+    try {
+      const newAccount = await accountsApi.create(name, info, balance, calculatedData);
+      // If a group was selected, add the account to the group
+      if (groupId) {
+        await accountsApi.modifyGroupMembership(newAccount.id, 'add', groupId);
+      }
+      await fetchData();
+      setShowAccountForm(false);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleCreateGroup = async (name, description, color, isCalculated, formula, accountIds = []) => {
+    try {
+      const newGroup = await groupsApi.create(name, description, color, isCalculated, formula);
+      // Add selected accounts to the new group
+      for (let i = 0; i < accountIds.length; i++) {
+        await accountsApi.modifyGroupMembership(accountIds[i], 'add', newGroup.id, null, i + 1);
+      }
+      await fetchData();
+      setShowGroupForm(false);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -131,7 +169,32 @@ export default function SettingsPage() {
         >
           Groups ({groups.length})
         </button>
+        <button
+          className="btn-primary settings-create-btn"
+          onClick={() => activeTab === 'accounts' ? setShowAccountForm(true) : setShowGroupForm(true)}
+        >
+          <Plus size={18} />
+          Create {activeTab === 'accounts' ? 'Account' : 'Group'}
+        </button>
       </div>
+
+      {showAccountForm && (
+        <AccountForm
+          onSubmit={handleCreateAccount}
+          onCancel={() => setShowAccountForm(false)}
+          accounts={activeAccounts}
+          groups={activeGroups}
+        />
+      )}
+
+      {showGroupForm && (
+        <GroupForm
+          onSubmit={handleCreateGroup}
+          onCancel={() => setShowGroupForm(false)}
+          accounts={activeAccounts}
+          allAccounts={activeAccounts}
+        />
+      )}
 
       <div className="settings-list">
         {currentItems.length === 0 ? (

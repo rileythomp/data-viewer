@@ -1683,6 +1683,7 @@ select.account-select {
   margin-bottom: var(--space-6);
   border-bottom: 1px solid var(--color-border);
   padding-bottom: var(--space-3);
+  align-items: center;
 }
 
 .settings-tab {
@@ -1705,6 +1706,13 @@ select.account-select {
 .settings-tab.active {
   background-color: var(--color-primary);
   color: white;
+}
+
+.settings-create-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .settings-list {
