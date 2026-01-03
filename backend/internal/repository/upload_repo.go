@@ -8,6 +8,8 @@ import (
 	"finance-tracker/internal/models"
 )
 
+const batchSize = 100 // Number of rows to insert per transaction batch
+
 type UploadRepository struct {
 	db *sql.DB
 }
@@ -27,7 +29,9 @@ func (r *UploadRepository) GetAll(page, pageSize int) (*models.UploadListRespons
 	// Get paginated uploads (without data field for list view)
 	offset := (page - 1) * pageSize
 	query := `
-		SELECT id, name, description, file_name, file_type, file_size, row_count, columns, created_at, updated_at
+		SELECT id, name, description, file_name, file_type, file_size, row_count, columns,
+		       COALESCE(status, 'completed') as status, COALESCE(error_message, '') as error_message,
+		       created_at, updated_at
 		FROM uploads
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
@@ -42,7 +46,7 @@ func (r *UploadRepository) GetAll(page, pageSize int) (*models.UploadListRespons
 	for rows.Next() {
 		var u models.Upload
 		var columnsJSON []byte
-		if err := rows.Scan(&u.ID, &u.Name, &u.Description, &u.FileName, &u.FileType, &u.FileSize, &u.RowCount, &columnsJSON, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Description, &u.FileName, &u.FileType, &u.FileSize, &u.RowCount, &columnsJSON, &u.Status, &u.ErrorMessage, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan upload: %w", err)
 		}
 		if len(columnsJSON) > 0 {
@@ -61,13 +65,15 @@ func (r *UploadRepository) GetAll(page, pageSize int) (*models.UploadListRespons
 
 func (r *UploadRepository) GetByID(id int) (*models.Upload, error) {
 	query := `
-		SELECT id, name, description, file_name, file_type, file_size, row_count, columns, created_at, updated_at
+		SELECT id, name, description, file_name, file_type, file_size, row_count, columns,
+		       COALESCE(status, 'completed') as status, COALESCE(error_message, '') as error_message,
+		       created_at, updated_at
 		FROM uploads
 		WHERE id = $1
 	`
 	var u models.Upload
 	var columnsJSON []byte
-	err := r.db.QueryRow(query, id).Scan(&u.ID, &u.Name, &u.Description, &u.FileName, &u.FileType, &u.FileSize, &u.RowCount, &columnsJSON, &u.CreatedAt, &u.UpdatedAt)
+	err := r.db.QueryRow(query, id).Scan(&u.ID, &u.Name, &u.Description, &u.FileName, &u.FileType, &u.FileSize, &u.RowCount, &columnsJSON, &u.Status, &u.ErrorMessage, &u.CreatedAt, &u.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -90,8 +96,52 @@ func (r *UploadRepository) GetData(id int, page, pageSize int) (*models.UploadDa
 		return nil, nil
 	}
 
-	// Get paginated data
 	offset := (page - 1) * pageSize
+
+	// Check if data exists in the normalized upload_rows table
+	var normalizedCount int
+	err = r.db.QueryRow("SELECT COUNT(*) FROM upload_rows WHERE upload_id = $1", id).Scan(&normalizedCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count upload rows: %w", err)
+	}
+
+	if normalizedCount > 0 {
+		// Use database-level pagination from upload_rows
+		query := `
+			SELECT data FROM upload_rows
+			WHERE upload_id = $1
+			ORDER BY row_index
+			LIMIT $2 OFFSET $3
+		`
+		rows, err := r.db.Query(query, id, pageSize, offset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get upload rows: %w", err)
+		}
+		defer rows.Close()
+
+		var paginatedData [][]any
+		for rows.Next() {
+			var dataJSON []byte
+			if err := rows.Scan(&dataJSON); err != nil {
+				return nil, fmt.Errorf("failed to scan upload row: %w", err)
+			}
+			var rowData []any
+			if len(dataJSON) > 0 {
+				json.Unmarshal(dataJSON, &rowData)
+			}
+			paginatedData = append(paginatedData, rowData)
+		}
+
+		return &models.UploadDataResponse{
+			Columns:  upload.Columns,
+			Data:     paginatedData,
+			Total:    normalizedCount,
+			Page:     page,
+			PageSize: pageSize,
+		}, nil
+	}
+
+	// Fallback: read from legacy data JSONB column (for backwards compatibility)
 	query := `
 		SELECT data
 		FROM uploads
@@ -134,21 +184,26 @@ func (r *UploadRepository) Create(req *models.CreateUploadRequest) (*models.Uplo
 		return nil, fmt.Errorf("failed to marshal columns: %w", err)
 	}
 
-	dataJSON, err := json.Marshal(req.Data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal data: %w", err)
-	}
-
 	rowCount := len(req.Data)
 
+	// Start transaction for atomic insert
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Insert upload metadata (without data blob)
 	query := `
-		INSERT INTO uploads (name, description, file_name, file_type, file_size, row_count, columns, data)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id, name, description, file_name, file_type, file_size, row_count, columns, created_at, updated_at
+		INSERT INTO uploads (name, description, file_name, file_type, file_size, row_count, columns, data, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, '[]', 'completed')
+		RETURNING id, name, description, file_name, file_type, file_size, row_count, columns,
+		          COALESCE(status, 'completed') as status, COALESCE(error_message, '') as error_message,
+		          created_at, updated_at
 	`
 	var u models.Upload
 	var returnedColumnsJSON []byte
-	err = r.db.QueryRow(query,
+	err = tx.QueryRow(query,
 		req.Name,
 		req.Description,
 		req.FileName,
@@ -156,14 +211,41 @@ func (r *UploadRepository) Create(req *models.CreateUploadRequest) (*models.Uplo
 		req.FileSize,
 		rowCount,
 		columnsJSON,
-		dataJSON,
-	).Scan(&u.ID, &u.Name, &u.Description, &u.FileName, &u.FileType, &u.FileSize, &u.RowCount, &returnedColumnsJSON, &u.CreatedAt, &u.UpdatedAt)
+	).Scan(&u.ID, &u.Name, &u.Description, &u.FileName, &u.FileType, &u.FileSize, &u.RowCount, &returnedColumnsJSON, &u.Status, &u.ErrorMessage, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create upload: %w", err)
 	}
 	if len(returnedColumnsJSON) > 0 {
 		json.Unmarshal(returnedColumnsJSON, &u.Columns)
 	}
+
+	// Insert rows in batches to the normalized table
+	for i := 0; i < len(req.Data); i += batchSize {
+		end := i + batchSize
+		if end > len(req.Data) {
+			end = len(req.Data)
+		}
+		batch := req.Data[i:end]
+
+		for j, row := range batch {
+			rowJSON, err := json.Marshal(row)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal row data: %w", err)
+			}
+			_, err = tx.Exec(
+				"INSERT INTO upload_rows (upload_id, row_index, data) VALUES ($1, $2, $3)",
+				u.ID, i+j, rowJSON,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to insert upload row: %w", err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return &u, nil
 }
 
@@ -177,9 +259,119 @@ func (r *UploadRepository) Delete(id int) error {
 		return fmt.Errorf("upload not found")
 	}
 
+	// Delete will cascade to upload_rows due to ON DELETE CASCADE
 	_, err = r.db.Exec("DELETE FROM uploads WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete upload: %w", err)
+	}
+	return nil
+}
+
+// CreateMetadata creates upload metadata with pending status for async processing
+func (r *UploadRepository) CreateMetadata(req *models.CreateUploadMetadataRequest) (*models.Upload, error) {
+	columnsJSON, err := json.Marshal(req.Columns)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal columns: %w", err)
+	}
+
+	query := `
+		INSERT INTO uploads (name, description, file_name, file_type, file_size, row_count, columns, data, status)
+		VALUES ($1, $2, $3, $4, $5, 0, $6, '[]', $7)
+		RETURNING id, name, description, file_name, file_type, file_size, row_count, columns,
+		          COALESCE(status, 'completed') as status, COALESCE(error_message, '') as error_message,
+		          created_at, updated_at
+	`
+	var u models.Upload
+	var returnedColumnsJSON []byte
+	err = r.db.QueryRow(query,
+		req.Name,
+		req.Description,
+		req.FileName,
+		req.FileType,
+		req.FileSize,
+		columnsJSON,
+		req.Status,
+	).Scan(&u.ID, &u.Name, &u.Description, &u.FileName, &u.FileType, &u.FileSize, &u.RowCount, &returnedColumnsJSON, &u.Status, &u.ErrorMessage, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create upload metadata: %w", err)
+	}
+	if len(returnedColumnsJSON) > 0 {
+		json.Unmarshal(returnedColumnsJSON, &u.Columns)
+	}
+	return &u, nil
+}
+
+// UpdateStatus updates the upload status and optionally the error message
+func (r *UploadRepository) UpdateStatus(id int, status string, errorMessage string) error {
+	query := `
+		UPDATE uploads
+		SET status = $2, error_message = $3, updated_at = NOW()
+		WHERE id = $1
+	`
+	_, err := r.db.Exec(query, id, status, errorMessage)
+	if err != nil {
+		return fmt.Errorf("failed to update upload status: %w", err)
+	}
+	return nil
+}
+
+// UpdateRowCount updates the row count after processing
+func (r *UploadRepository) UpdateRowCount(id int, rowCount int) error {
+	query := `
+		UPDATE uploads
+		SET row_count = $2, updated_at = NOW()
+		WHERE id = $1
+	`
+	_, err := r.db.Exec(query, id, rowCount)
+	if err != nil {
+		return fmt.Errorf("failed to update row count: %w", err)
+	}
+	return nil
+}
+
+// UpdateColumns updates the columns after parsing (for JSON where columns are discovered during parsing)
+func (r *UploadRepository) UpdateColumns(id int, columns []string) error {
+	columnsJSON, err := json.Marshal(columns)
+	if err != nil {
+		return fmt.Errorf("failed to marshal columns: %w", err)
+	}
+
+	query := `
+		UPDATE uploads
+		SET columns = $2, updated_at = NOW()
+		WHERE id = $1
+	`
+	_, err = r.db.Exec(query, id, columnsJSON)
+	if err != nil {
+		return fmt.Errorf("failed to update columns: %w", err)
+	}
+	return nil
+}
+
+// InsertRowsBatch inserts a batch of rows to the upload_rows table
+func (r *UploadRepository) InsertRowsBatch(uploadID int, startIndex int, rows [][]any) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for i, row := range rows {
+		rowJSON, err := json.Marshal(row)
+		if err != nil {
+			return fmt.Errorf("failed to marshal row data: %w", err)
+		}
+		_, err = tx.Exec(
+			"INSERT INTO upload_rows (upload_id, row_index, data) VALUES ($1, $2, $3)",
+			uploadID, startIndex+i, rowJSON,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert upload row: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
 }
