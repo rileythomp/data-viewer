@@ -609,6 +609,20 @@
   font-weight: 500;
 }
 
+.formula-account-link {
+  cursor: pointer;
+}
+
+.formula-account-link:hover {
+  text-decoration: underline;
+}
+
+.formula-account-link:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .formula-result {
   margin-top: var(--space-3);
   padding-top: var(--space-3);

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { detectCircularDependency } from '../utils/formulaValidation';
 
@@ -11,6 +12,7 @@ export default function FormulaDisplay({
   currentAccountId = null,
   allAccounts = null,
 }) {
+  const navigate = useNavigate();
   const [coefficient, setCoefficient] = useState('1');
   const [validationError, setValidationError] = useState('');
 
@@ -127,7 +129,19 @@ export default function FormulaDisplay({
                 </span>
                 <span className="formula-term">
                   {coeffDisplay && <span className="formula-coefficient">{coeffDisplay}&nbsp;</span>}
-                  <span className="formula-account">{accountName}</span>
+                  {editable ? (
+                    <span className="formula-account">{accountName}</span>
+                  ) : (
+                    <span
+                      className="formula-account formula-account-link"
+                      onClick={(e) => { e.stopPropagation(); navigate(`/accounts/${normalized.accountId}`); }}
+                      role="link"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); navigate(`/accounts/${normalized.accountId}`); } }}
+                    >
+                      {accountName}
+                    </span>
+                  )}
                 </span>
                 {editable && (
                   <button
