@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8080'
+      '/api': `http://localhost:${process.env.VITE_BACKEND_PORT || '8080'}`
     }
   }
 })
