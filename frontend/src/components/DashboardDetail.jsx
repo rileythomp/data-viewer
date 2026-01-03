@@ -151,180 +151,167 @@ export default function DashboardDetail() {
 
   return (
     <div className="app">
-      <div className="detail-header">
-        <button onClick={() => navigate('/dashboards')} className="btn-back">
-          <ArrowLeft size={18} />
-          <span>Back</span>
-        </button>
-        <div className="detail-actions">
-          <button
-            onClick={() => setIsEditMode(!isEditMode)}
-            className={`btn-icon ${isEditMode ? 'btn-icon-active' : ''}`}
-            title={isEditMode ? "Done editing" : "Edit"}
-          >
-            {isEditMode ? <Check size={18} /> : <Pencil size={18} />}
-          </button>
-          <button onClick={handleDelete} className="btn-icon btn-icon-danger" title="Delete">
-            <Trash2 size={18} />
-          </button>
-        </div>
-      </div>
-
-      <div className="detail-content">
-        <div className="detail-main">
+      <div className="header">
+        <div className="header-content">
+          <div className="dashboard-header-row">
+            <button onClick={() => navigate('/dashboards')} className="btn-back">
+              <ArrowLeft size={18} />
+              <span>Back</span>
+            </button>
+            <div className="detail-actions">
+              <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`btn-icon ${isEditMode ? 'btn-icon-active' : ''}`}
+                title={isEditMode ? "Done editing" : "Edit"}
+              >
+                {isEditMode ? <Check size={18} /> : <Pencil size={18} />}
+              </button>
+              <button onClick={handleDelete} className="btn-icon btn-icon-danger" title="Delete">
+                <Trash2 size={18} />
+              </button>
+            </div>
+          </div>
           {isEditMode ? (
             <InlineEditableText
               value={dashboard.name}
               onSave={handleSaveName}
               type="input"
-              className="detail-title-input"
+              className="dashboard-title-input"
               required
               autoFocus
             />
           ) : (
-            <h1 className="detail-title">{dashboard.name}</h1>
+            <h1>{dashboard.name}</h1>
           )}
-
-          <div className="detail-balance-section">
-            <span className="detail-balance-label">Total Balance</span>
-            <p className="detail-balance">{formatCurrency(dashboard.total_balance)}</p>
-          </div>
-
-          {(dashboard.description || isEditMode) && (
-            <div className="detail-info-section">
-              <span className="detail-info-label">Description</span>
-              {isEditMode ? (
-                <InlineEditableText
-                  value={dashboard.description || ''}
-                  onSave={handleSaveDescription}
-                  type="textarea"
-                  className="detail-info-textarea"
-                  placeholder="Add description..."
-                  rows={4}
-                />
-              ) : (
-                <p className="detail-info-text">{dashboard.description}</p>
-              )}
-            </div>
-          )}
-
-          {isEditMode && (
-            <div className="detail-selection-section">
-              <div className="detail-info-section">
-                <span className="detail-info-label">Accounts</span>
-                <div className="item-selection">
-                  {allAccounts.map((account) => (
-                    <label key={account.id} className="item-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedAccounts.includes(account.id)}
-                        onChange={() => handleAccountToggle(account.id)}
-                      />
-                      <span className="item-checkbox-name">{account.account_name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="detail-info-section">
-                <span className="detail-info-label">Groups</span>
-                <div className="item-selection">
-                  {allGroups.map((group) => (
-                    <label key={group.id} className="item-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedGroups.includes(group.id)}
-                        onChange={() => handleGroupToggle(group.id)}
-                      />
-                      <div
-                        className="group-color-dot"
-                        style={{ backgroundColor: group.color }}
-                      />
-                      <span className="item-checkbox-name">{group.group_name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="detail-accounts">
-          <h2 className="detail-section-title">
-            Items ({dashboard.items?.length || 0})
-          </h2>
-          {!dashboard.items || dashboard.items.length === 0 ? (
-            <p className="empty-state-small">No items in this dashboard yet.</p>
-          ) : (
-            <div className="dashboard-items-list">
-              {dashboard.items.map((item, index) => (
-                item.type === 'account' ? (
-                  <AccountCard
-                    key={`account-${item.account.id}`}
-                    account={item.account}
-                    onUpdateBalance={handleUpdateBalance}
-                    onViewHistory={setViewingHistory}
-                  />
-                ) : (
-                  <div key={`group-${item.group.id}`} className="group-card">
-                    <div
-                      className="group-color-indicator"
-                      style={{ backgroundColor: item.group.color }}
-                    />
-                    <div
-                      className="group-card-header"
-                      onClick={() => handleToggleExpand(item.group.id)}
-                    >
-                      <div className="group-header-left">
-                        <button
-                          className="btn-icon btn-expand"
-                          aria-label={expandedGroups.has(item.group.id) ? 'Collapse group' : 'Expand group'}
-                        >
-                          {expandedGroups.has(item.group.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                        </button>
-                        <h3
-                          className="group-name"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/groups/${item.group.id}`);
-                          }}
-                          title="View group details"
-                        >
-                          {item.group.group_name}
-                        </h3>
-                        <span className="group-account-count">
-                          ({item.group.accounts?.length || 0} accounts)
-                        </span>
-                      </div>
-                      <div className="group-header-right">
-                        <span className="group-total">{formatCurrency(item.group.total_balance)}</span>
-                      </div>
-                    </div>
-                    {expandedGroups.has(item.group.id) && (
-                      <div className="group-content group-content-expanded">
-                        {item.group.accounts && item.group.accounts.length > 0 ? (
-                          <div className="group-accounts">
-                            {item.group.accounts.map((account) => (
-                              <AccountCard
-                                key={account.id}
-                                account={account}
-                                onUpdateBalance={handleUpdateBalance}
-                                onViewHistory={setViewingHistory}
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="group-empty">No accounts in this group.</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              ))}
-            </div>
+          <p className="total-balance">Total: {formatCurrency(dashboard.total_balance)}</p>
+          {dashboard.description && !isEditMode && (
+            <p className="dashboard-description">{dashboard.description}</p>
           )}
         </div>
       </div>
+
+      {isEditMode && (
+        <div className="dashboard-edit-panel">
+          <div className="form-group">
+            <label>Description</label>
+            <InlineEditableText
+              value={dashboard.description || ''}
+              onSave={handleSaveDescription}
+              type="textarea"
+              className="detail-info-textarea"
+              placeholder="Add description..."
+              rows={3}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Accounts</label>
+            <div className="item-selection">
+              {allAccounts.map((account) => (
+                <label key={account.id} className="item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedAccounts.includes(account.id)}
+                    onChange={() => handleAccountToggle(account.id)}
+                  />
+                  <span className="item-checkbox-name">{account.account_name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Groups</label>
+            <div className="item-selection">
+              {allGroups.map((group) => (
+                <label key={group.id} className="item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedGroups.includes(group.id)}
+                    onChange={() => handleGroupToggle(group.id)}
+                  />
+                  <div
+                    className="group-color-dot"
+                    style={{ backgroundColor: group.color }}
+                  />
+                  <span className="item-checkbox-name">{group.group_name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!dashboard.items || dashboard.items.length === 0 ? (
+        <p className="empty-state">No items in this dashboard yet. Click edit to add accounts and groups.</p>
+      ) : (
+        <div className="list-container">
+          {dashboard.items.map((item) => (
+            item.type === 'account' ? (
+              <AccountCard
+                key={`account-${item.account.id}`}
+                account={item.account}
+                onUpdateBalance={handleUpdateBalance}
+                onViewHistory={setViewingHistory}
+              />
+            ) : (
+              <div key={`group-${item.group.id}`} className="group-card">
+                <div
+                  className="group-color-indicator"
+                  style={{ backgroundColor: item.group.color }}
+                />
+                <div
+                  className="group-card-header"
+                  onClick={() => handleToggleExpand(item.group.id)}
+                >
+                  <div className="group-header-left">
+                    <button
+                      className="btn-icon btn-expand"
+                      aria-label={expandedGroups.has(item.group.id) ? 'Collapse group' : 'Expand group'}
+                    >
+                      {expandedGroups.has(item.group.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                    </button>
+                    <h3
+                      className="group-name"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/groups/${item.group.id}`);
+                      }}
+                      title="View group details"
+                    >
+                      {item.group.group_name}
+                    </h3>
+                    <span className="group-account-count">
+                      ({item.group.accounts?.length || 0} accounts)
+                    </span>
+                  </div>
+                  <div className="group-header-right">
+                    <span className="group-total">{formatCurrency(item.group.total_balance)}</span>
+                  </div>
+                </div>
+                {expandedGroups.has(item.group.id) && (
+                  <div className="group-content group-content-expanded">
+                    {item.group.accounts && item.group.accounts.length > 0 ? (
+                      <div className="group-accounts">
+                        {item.group.accounts.map((account) => (
+                          <AccountCard
+                            key={account.id}
+                            account={account}
+                            onUpdateBalance={handleUpdateBalance}
+                            onViewHistory={setViewingHistory}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="group-empty">No accounts in this group.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          ))}
+        </div>
+      )}
 
       {viewingHistory && (
         <BalanceHistoryModal

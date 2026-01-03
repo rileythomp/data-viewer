@@ -2270,18 +2270,36 @@ select.account-select {
   gap: var(--space-5);
 }
 
-/* Dashboard items list */
-.dashboard-items-list {
+/* Dashboard detail header row */
+.dashboard-header-row {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
 }
 
-/* Detail selection section */
-.detail-selection-section {
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-4);
-  margin-top: var(--space-4);
+/* Dashboard title input */
+.dashboard-title-input {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+/* Dashboard description in header */
+.dashboard-description {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  margin-top: var(--space-2);
+}
+
+/* Dashboard edit panel */
+.dashboard-edit-panel {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
 }
 
 @media (max-width: 768px) {
@@ -2293,6 +2311,12 @@ select.account-select {
 
   .pagination {
     flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .dashboard-header-row {
+    flex-direction: column;
+    align-items: flex-start;
     gap: var(--space-3);
   }
 }
