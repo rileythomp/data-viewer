@@ -17,7 +17,7 @@ func NewAccountRepository(db *sql.DB) *AccountRepository {
 
 func (r *AccountRepository) GetAll() ([]models.Account, error) {
 	query := `
-		SELECT id, account_name, account_info, current_balance, is_archived, position, created_at, updated_at
+		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
 		FROM account_balances
 		WHERE is_archived = false
 		ORDER BY position ASC, account_name ASC
@@ -31,8 +31,13 @@ func (r *AccountRepository) GetAll() ([]models.Account, error) {
 	var accounts []models.Account
 	for rows.Next() {
 		var a models.Account
-		if err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		var groupID sql.NullInt64
+		if err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan account: %w", err)
+		}
+		if groupID.Valid {
+			gid := int(groupID.Int64)
+			a.GroupID = &gid
 		}
 		accounts = append(accounts, a)
 	}
@@ -41,17 +46,22 @@ func (r *AccountRepository) GetAll() ([]models.Account, error) {
 
 func (r *AccountRepository) GetByID(id int) (*models.Account, error) {
 	query := `
-		SELECT id, account_name, account_info, current_balance, is_archived, position, created_at, updated_at
+		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
 		FROM account_balances
 		WHERE id = $1
 	`
 	var a models.Account
-	err := r.db.QueryRow(query, id).Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.CreatedAt, &a.UpdatedAt)
+	var groupID sql.NullInt64
+	err := r.db.QueryRow(query, id).Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account: %w", err)
+	}
+	if groupID.Valid {
+		gid := int(groupID.Int64)
+		a.GroupID = &gid
 	}
 	return &a, nil
 }
@@ -78,12 +88,17 @@ func (r *AccountRepository) Create(req *models.CreateAccountRequest) (*models.Ac
 	query := `
 		INSERT INTO account_balances (account_name, account_info, current_balance, position)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
 	`
 	var a models.Account
+	var groupID sql.NullInt64
 	err = tx.QueryRow(query, req.AccountName, req.AccountInfo, req.CurrentBalance, newPosition).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
 	)
+	if groupID.Valid {
+		gid := int(groupID.Int64)
+		a.GroupID = &gid
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create account: %w", err)
 	}
@@ -110,17 +125,22 @@ func (r *AccountRepository) UpdateName(id int, name string) (*models.Account, er
 		UPDATE account_balances
 		SET account_name = $1, updated_at = NOW()
 		WHERE id = $2
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
 	`
 	var a models.Account
+	var groupID sql.NullInt64
 	err := r.db.QueryRow(query, name, id).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to update account name: %w", err)
+	}
+	if groupID.Valid {
+		gid := int(groupID.Int64)
+		a.GroupID = &gid
 	}
 	return &a, nil
 }
@@ -147,12 +167,17 @@ func (r *AccountRepository) UpdateBalance(id int, balance float64) (*models.Acco
 		UPDATE account_balances
 		SET current_balance = $1, updated_at = NOW()
 		WHERE id = $2
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
 	`
 	var a models.Account
+	var groupID sql.NullInt64
 	err = tx.QueryRow(updateQuery, balance, id).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
 	)
+	if groupID.Valid {
+		gid := int(groupID.Int64)
+		a.GroupID = &gid
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to update balance: %w", err)
 	}
@@ -179,17 +204,22 @@ func (r *AccountRepository) Archive(id int) (*models.Account, error) {
 		UPDATE account_balances
 		SET is_archived = true, updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
 	`
 	var a models.Account
+	var groupID sql.NullInt64
 	err := r.db.QueryRow(query, id).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to archive account: %w", err)
+	}
+	if groupID.Valid {
+		gid := int(groupID.Int64)
+		a.GroupID = &gid
 	}
 	return &a, nil
 }
@@ -199,17 +229,104 @@ func (r *AccountRepository) UpdateInfo(id int, info string) (*models.Account, er
 		UPDATE account_balances
 		SET account_info = $1, updated_at = NOW()
 		WHERE id = $2
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
 	`
 	var a models.Account
+	var groupID sql.NullInt64
 	err := r.db.QueryRow(query, info, id).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to update account info: %w", err)
+	}
+	if groupID.Valid {
+		gid := int(groupID.Int64)
+		a.GroupID = &gid
+	}
+	return &a, nil
+}
+
+func (r *AccountRepository) SetGroup(id int, groupID *int, positionInGroup *int) (*models.Account, error) {
+	var a models.Account
+	var gid sql.NullInt64
+
+	if groupID == nil {
+		query := `
+			UPDATE account_balances
+			SET group_id = NULL, position_in_group = 0, updated_at = NOW()
+			WHERE id = $1
+			RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		`
+		err := r.db.QueryRow(query, id).Scan(
+			&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &gid, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+		)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to remove account from group: %w", err)
+		}
+	} else {
+		tx, err := r.db.Begin()
+		if err != nil {
+			return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		}
+		defer tx.Rollback()
+
+		var newPos int
+		if positionInGroup != nil {
+			// Use the specified position and shift existing accounts
+			newPos = *positionInGroup
+
+			// Shift accounts at or after the target position down by 1
+			_, err = tx.Exec(`
+				UPDATE account_balances
+				SET position_in_group = position_in_group + 1, updated_at = NOW()
+				WHERE group_id = $1 AND position_in_group >= $2 AND id != $3
+			`, *groupID, newPos, id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to shift account positions: %w", err)
+			}
+		} else {
+			// Default to end of list
+			var maxPos sql.NullInt64
+			err := tx.QueryRow("SELECT MAX(position_in_group) FROM account_balances WHERE group_id = $1", *groupID).Scan(&maxPos)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get max position in group: %w", err)
+			}
+			newPos = 1
+			if maxPos.Valid {
+				newPos = int(maxPos.Int64) + 1
+			}
+		}
+
+		query := `
+			UPDATE account_balances
+			SET group_id = $1, position_in_group = $2, updated_at = NOW()
+			WHERE id = $3
+			RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		`
+		err = tx.QueryRow(query, *groupID, newPos, id).Scan(
+			&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &gid, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+		)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to set account group: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		}
+	}
+
+	if gid.Valid {
+		g := int(gid.Int64)
+		a.GroupID = &g
 	}
 	return &a, nil
 }

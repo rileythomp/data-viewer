@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, History, Archive } from 'lucide-react';
+import { History, Archive, X } from 'lucide-react';
 
-export default function AccountCard({ account, onEdit, onUpdateBalance, onViewHistory, onArchive }) {
+export default function AccountCard({ account, onUpdateBalance, onViewHistory, onArchive, onRemoveFromGroup }) {
   const navigate = useNavigate();
   const [isEditingBalance, setIsEditingBalance] = useState(false);
   const [balanceValue, setBalanceValue] = useState(account.current_balance.toString());
@@ -69,14 +69,6 @@ export default function AccountCard({ account, onEdit, onUpdateBalance, onViewHi
           <h3 className="account-name">{account.account_name}</h3>
           <div className="account-actions-icons">
             <button
-              onClick={() => onEdit(account)}
-              className="btn-icon"
-              aria-label="Edit account"
-              title="Edit"
-            >
-              <Pencil size={16} />
-            </button>
-            <button
               onClick={() => onViewHistory(account)}
               className="btn-icon"
               aria-label="View balance history"
@@ -84,14 +76,26 @@ export default function AccountCard({ account, onEdit, onUpdateBalance, onViewHi
             >
               <History size={16} />
             </button>
-            <button
-              onClick={() => onArchive(account)}
-              className="btn-icon btn-icon-danger"
-              aria-label="Archive account"
-              title="Archive"
-            >
-              <Archive size={16} />
-            </button>
+            {onRemoveFromGroup && (
+              <button
+                onClick={() => onRemoveFromGroup(account)}
+                className="btn-icon btn-icon-danger"
+                aria-label="Remove from group"
+                title="Remove from group"
+              >
+                <X size={16} />
+              </button>
+            )}
+            {onArchive && (
+              <button
+                onClick={() => onArchive(account)}
+                className="btn-icon btn-icon-danger"
+                aria-label="Archive account"
+                title="Archive"
+              >
+                <Archive size={16} />
+              </button>
+            )}
           </div>
         </div>
         <div className="account-balance-row">

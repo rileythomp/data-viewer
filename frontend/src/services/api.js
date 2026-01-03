@@ -1,5 +1,75 @@
 const API_BASE = '/api';
 
+export const listApi = {
+  getGroupedList: async () => {
+    const res = await fetch(`${API_BASE}/list`);
+    if (!res.ok) throw new Error('Failed to fetch list');
+    return res.json();
+  },
+};
+
+export const groupsApi = {
+  getAll: async () => {
+    const res = await fetch(`${API_BASE}/groups`);
+    if (!res.ok) throw new Error('Failed to fetch groups');
+    return res.json();
+  },
+
+  getById: async (id) => {
+    const res = await fetch(`${API_BASE}/groups/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch group');
+    return res.json();
+  },
+
+  create: async (groupName, groupDescription, color) => {
+    const res = await fetch(`${API_BASE}/groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_name: groupName, group_description: groupDescription, color }),
+    });
+    if (!res.ok) throw new Error('Failed to create group');
+    return res.json();
+  },
+
+  update: async (id, groupName, groupDescription, color) => {
+    const res = await fetch(`${API_BASE}/groups/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_name: groupName, group_description: groupDescription, color }),
+    });
+    if (!res.ok) throw new Error('Failed to update group');
+    return res.json();
+  },
+
+  archive: async (id) => {
+    const res = await fetch(`${API_BASE}/groups/${id}/archive`, {
+      method: 'PATCH',
+    });
+    if (!res.ok) throw new Error('Failed to archive group');
+    return res.json();
+  },
+
+  updatePositions: async (positions) => {
+    const res = await fetch(`${API_BASE}/groups/positions`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ positions }),
+    });
+    if (!res.ok) throw new Error('Failed to update positions');
+    return res.json();
+  },
+
+  updateAccountPositionsInGroup: async (groupId, positions) => {
+    const res = await fetch(`${API_BASE}/groups/${groupId}/account-positions`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ positions }),
+    });
+    if (!res.ok) throw new Error('Failed to update account positions');
+    return res.json();
+  },
+};
+
 export const accountsApi = {
   getAll: async () => {
     const res = await fetch(`${API_BASE}/accounts`);
@@ -83,6 +153,20 @@ export const accountsApi = {
       body: JSON.stringify({ positions }),
     });
     if (!res.ok) throw new Error('Failed to update positions');
+    return res.json();
+  },
+
+  setGroup: async (id, groupId, positionInGroup = null) => {
+    const payload = { group_id: groupId };
+    if (positionInGroup !== null) {
+      payload.position_in_group = positionInGroup;
+    }
+    const res = await fetch(`${API_BASE}/accounts/${id}/group`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Failed to set account group');
     return res.json();
   },
 };

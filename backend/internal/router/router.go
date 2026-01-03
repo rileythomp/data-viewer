@@ -13,15 +13,21 @@ import (
 func New(db *sql.DB) *mux.Router {
 	r := mux.NewRouter()
 
-	// Initialize repository and handlers
+	// Initialize repositories and handlers
 	accountRepo := repository.NewAccountRepository(db)
+	groupRepo := repository.NewAccountGroupRepository(db)
 	accountHandler := handlers.NewAccountHandler(accountRepo)
+	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
 
 	api.HandleFunc("/health", handlers.HealthCheck).Methods("GET")
 
+	// Unified list endpoint for main page
+	api.HandleFunc("/list", groupHandler.GetGroupedList).Methods("GET")
+
+	// Account routes
 	api.HandleFunc("/accounts", accountHandler.GetAll).Methods("GET")
 	api.HandleFunc("/accounts", accountHandler.Create).Methods("POST")
 	api.HandleFunc("/accounts/positions", accountHandler.UpdatePositions).Methods("PATCH")
@@ -31,6 +37,16 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/accounts/{id}/balance", accountHandler.UpdateBalance).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}/archive", accountHandler.Archive).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}/history", accountHandler.GetHistory).Methods("GET")
+	api.HandleFunc("/accounts/{id}/group", accountHandler.SetGroup).Methods("PATCH")
+
+	// Group routes
+	api.HandleFunc("/groups", groupHandler.GetAll).Methods("GET")
+	api.HandleFunc("/groups", groupHandler.Create).Methods("POST")
+	api.HandleFunc("/groups/positions", groupHandler.UpdatePositions).Methods("PATCH")
+	api.HandleFunc("/groups/{id}", groupHandler.GetByID).Methods("GET")
+	api.HandleFunc("/groups/{id}", groupHandler.Update).Methods("PATCH")
+	api.HandleFunc("/groups/{id}/archive", groupHandler.Archive).Methods("PATCH")
+	api.HandleFunc("/groups/{id}/account-positions", groupHandler.UpdateAccountPositionsInGroup).Methods("PATCH")
 
 	return r
 }

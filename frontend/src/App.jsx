@@ -4,6 +4,7 @@ import './App.css'
 import NavBar from './components/NavBar'
 import AccountList from './components/AccountList'
 import AccountDetail from './components/AccountDetail'
+import GroupDetail from './components/GroupDetail'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Routes>
           <Route path="/" element={<AccountList />} />
           <Route path="/accounts/:id" element={<AccountDetail />} />
+          <Route path="/groups/:id" element={<GroupDetail />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

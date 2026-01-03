@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { X, Calculator } from 'lucide-react';
 
-export default function AccountForm({ onSubmit, onCancel, accounts = [] }) {
+export default function AccountForm({ onSubmit, onCancel, accounts = [], groups = [] }) {
   const [accountName, setAccountName] = useState('');
   const [accountInfo, setAccountInfo] = useState('');
   const [balance, setBalance] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [error, setError] = useState('');
   const [isCalculated, setIsCalculated] = useState(false);
   const [formulaItems, setFormulaItems] = useState([]);
@@ -69,10 +70,12 @@ export default function AccountForm({ onSubmit, onCancel, accounts = [] }) {
     } : null;
 
     try {
-      await onSubmit(accountName.trim(), accountInfo.trim(), balanceNum, calculatedData);
+      const groupId = selectedGroupId ? parseInt(selectedGroupId) : null;
+      await onSubmit(accountName.trim(), accountInfo.trim(), balanceNum, calculatedData, groupId);
       setAccountName('');
       setAccountInfo('');
       setBalance('');
+      setSelectedGroupId('');
       setIsCalculated(false);
       setFormulaItems([]);
     } catch (err) {
@@ -104,6 +107,23 @@ export default function AccountForm({ onSubmit, onCancel, accounts = [] }) {
           rows={3}
         />
       </div>
+      {groups.length > 0 && (
+        <div className="form-group">
+          <label htmlFor="groupSelect">Group (optional)</label>
+          <select
+            id="groupSelect"
+            value={selectedGroupId}
+            onChange={(e) => setSelectedGroupId(e.target.value)}
+          >
+            <option value="">No group</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.group_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {!isCalculated && (
         <div className="form-group">
           <label htmlFor="balance">Initial Balance</label>
