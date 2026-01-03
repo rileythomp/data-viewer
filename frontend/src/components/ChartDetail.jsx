@@ -12,6 +12,40 @@ import {
 import { chartsApi, accountsApi, groupsApi } from '../services/api';
 import InlineEditableText from './InlineEditableText';
 
+const RADIAN = Math.PI / 180;
+const MIN_LABEL_PERCENT = 0.05; // 5% minimum to show label
+
+const renderCustomizedLabel = ({
+  cx,
+  cy,
+  midAngle,
+  outerRadius,
+  percent,
+  name,
+}) => {
+  if (percent < MIN_LABEL_PERCENT) {
+    return null;
+  }
+
+  const radius = outerRadius + 25;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  const textAnchor = x > cx ? 'start' : 'end';
+
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="var(--color-text-primary)"
+      textAnchor={textAnchor}
+      dominantBaseline="central"
+      fontSize={12}
+    >
+      {`${name}: ${(percent * 100).toFixed(1)}%`}
+    </text>
+  );
+};
+
 export default function ChartDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -249,15 +283,28 @@ export default function ChartDetail() {
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                outerRadius={150}
-                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                outerRadius={120}
+                label={renderCustomizedLabel}
+                labelLine={(props) => {
+                  if (props.percent < MIN_LABEL_PERCENT) return null;
+                  return (
+                    <path
+                      d={`M${props.points[0].x},${props.points[0].y}L${props.points[1].x},${props.points[1].y}`}
+                      stroke="var(--color-text-muted)"
+                      fill="none"
+                    />
+                  );
+                }}
               >
                 {chart.pie_data.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
               <Tooltip content={<CustomTooltip />} />
-              <Legend />
+              <Legend
+                wrapperStyle={{ paddingTop: 20 }}
+                formatter={(value) => <span style={{ marginRight: 16 }}>{value}</span>}
+              />
             </PieChart>
           </ResponsiveContainer>
         </div>
