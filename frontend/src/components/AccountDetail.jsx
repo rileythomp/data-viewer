@@ -195,14 +195,17 @@ export default function AccountDetail() {
     setFormulaItems(newFormulaItems);
   };
 
-  const handleFormulaSave = async () => {
+  const handleFormulaSave = async (itemsOverride) => {
     if (!isCalculated) return;
 
+    // Use provided items (for remove operations) or current state
+    const items = itemsOverride || formulaItems;
+
     // Validate circular dependencies
-    if (formulaItems.length > 0) {
+    if (items.length > 0) {
       const { hasCircle, errorMessage } = detectCircularDependency(
         account.id,
-        formulaItems,
+        items,
         allAccounts
       );
       if (hasCircle) {
@@ -211,7 +214,7 @@ export default function AccountDetail() {
       }
     }
 
-    const formulaData = formulaItems.map(item => ({
+    const formulaData = items.map(item => ({
       account_id: item.accountId,
       coefficient: item.coefficient
     }));
@@ -282,7 +285,59 @@ export default function AccountDetail() {
             <h1 className="detail-title">{account.account_name}</h1>
           )}
 
-          {account.is_calculated && account.formula && account.formula.length > 0 ? (
+          {isEditMode && availableAccountsForFormula.length > 0 ? (
+            <div className="detail-formula-section-inline">
+              <div className="toggle-row">
+                <div className="toggle-label-content">
+                  <Calculator size={18} className="toggle-icon" />
+                  <span className="toggle-text">Calculated Balance</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={isCalculated}
+                    onChange={(e) => handleToggleCalculated(e.target.checked)}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+              {isCalculated ? (
+                <FormulaDisplay
+                  formulaItems={formulaItems}
+                  accounts={availableAccountsForFormula}
+                  editable={true}
+                  onChange={handleFormulaChange}
+                  onBlur={handleFormulaSave}
+                  currentAccountId={account.id}
+                  allAccounts={allAccounts}
+                />
+              ) : (
+                <div className="detail-balance-section">
+                  <span className="detail-balance-label">Current Balance</span>
+                  {isEditingBalance ? (
+                    <input
+                      ref={inputRef}
+                      type="number"
+                      step="0.01"
+                      value={balanceValue}
+                      onChange={(e) => setBalanceValue(e.target.value)}
+                      onKeyDown={handleBalanceKeyDown}
+                      onBlur={handleBalanceSubmit}
+                      className="balance-input balance-input-large"
+                    />
+                  ) : (
+                    <p
+                      className="detail-balance account-balance-clickable"
+                      onClick={handleBalanceClick}
+                      title="Click to edit balance"
+                    >
+                      {formatCurrency(account.current_balance)}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : account.is_calculated && account.formula && account.formula.length > 0 ? (
             <FormulaDisplay
               formulaItems={account.formula}
               accounts={allAccounts}
@@ -377,40 +432,6 @@ export default function AccountDetail() {
                 />
               ) : (
                 <p className="detail-info-text">{account.account_info}</p>
-              )}
-            </div>
-          )}
-
-          {isEditMode && availableAccountsForFormula.length > 0 && (
-            <div className="detail-formula-section">
-              <div className="toggle-row">
-                <div className="toggle-label-content">
-                  <Calculator size={18} className="toggle-icon" />
-                  <span className="toggle-text">Calculated Balance</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={isCalculated}
-                    onChange={(e) => handleToggleCalculated(e.target.checked)}
-                  />
-                  <span className="toggle-slider"></span>
-                </label>
-              </div>
-              <p className="form-hint">
-                Use a formula to calculate this account's balance from other accounts.
-              </p>
-
-              {isCalculated && (
-                <FormulaDisplay
-                  formulaItems={formulaItems}
-                  accounts={availableAccountsForFormula}
-                  editable={true}
-                  onChange={handleFormulaChange}
-                  onBlur={handleFormulaSave}
-                  currentAccountId={account.id}
-                  allAccounts={allAccounts}
-                />
               )}
             </div>
           )}

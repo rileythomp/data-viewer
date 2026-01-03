@@ -162,10 +162,13 @@ export default function GroupDetail() {
     setFormulaItems(newFormulaItems);
   };
 
-  const handleFormulaSave = async () => {
+  const handleFormulaSave = async (itemsOverride) => {
     if (!isCalculated) return;
 
-    const formulaData = formulaItems.map(item => ({
+    // Use provided items (for remove operations) or current state
+    const items = itemsOverride || formulaItems;
+
+    const formulaData = items.map(item => ({
       account_id: item.accountId,
       coefficient: item.coefficient
     }));
@@ -318,7 +321,38 @@ export default function GroupDetail() {
             )}
           </div>
 
-          {group.is_calculated && group.formula && group.formula.length > 0 ? (
+          {isEditMode && (group.accounts || []).length > 0 ? (
+            <div className="detail-formula-section-inline">
+              <div className="toggle-row">
+                <div className="toggle-label-content">
+                  <Calculator size={18} className="toggle-icon" />
+                  <span className="toggle-text">Calculated Balance</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={isCalculated}
+                    onChange={(e) => handleToggleCalculated(e.target.checked)}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+              {isCalculated ? (
+                <FormulaDisplay
+                  formulaItems={formulaItems}
+                  accounts={group.accounts || []}
+                  editable={true}
+                  onChange={handleFormulaChange}
+                  onBlur={handleFormulaSave}
+                />
+              ) : (
+                <div className="detail-balance-section">
+                  <span className="detail-balance-label">Total Balance</span>
+                  <p className="detail-balance">{formatCurrency(group.total_balance)}</p>
+                </div>
+              )}
+            </div>
+          ) : group.is_calculated && group.formula && group.formula.length > 0 ? (
             <FormulaDisplay
               formulaItems={group.formula}
               accounts={group.accounts || []}
@@ -345,38 +379,6 @@ export default function GroupDetail() {
                 />
               ) : (
                 <p className="detail-info-text">{group.group_description}</p>
-              )}
-            </div>
-          )}
-
-          {isEditMode && (group.accounts || []).length > 0 && (
-            <div className="detail-formula-section">
-              <div className="toggle-row">
-                <div className="toggle-label-content">
-                  <Calculator size={18} className="toggle-icon" />
-                  <span className="toggle-text">Calculated Balance</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={isCalculated}
-                    onChange={(e) => handleToggleCalculated(e.target.checked)}
-                  />
-                  <span className="toggle-slider"></span>
-                </label>
-              </div>
-              <p className="form-hint">
-                Use a formula instead of summing all account balances.
-              </p>
-
-              {isCalculated && (
-                <FormulaDisplay
-                  formulaItems={formulaItems}
-                  accounts={group.accounts || []}
-                  editable={true}
-                  onChange={handleFormulaChange}
-                  onBlur={handleFormulaSave}
-                />
               )}
             </div>
           )}

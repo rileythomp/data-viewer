@@ -93,6 +93,10 @@ export default function FormulaDisplay({
     }];
     onChange(newItems);
     setCoefficient('1');
+    // Trigger save after adding, passing the new items directly
+    if (onBlur) {
+      onBlur(newItems);
+    }
   };
 
   const handleRemoveFormulaItem = (accountId) => {
@@ -102,6 +106,11 @@ export default function FormulaDisplay({
       return normalized.accountId !== accountId;
     });
     onChange(newItems);
+    // Trigger save after removing, passing the new items directly
+    // since state won't be updated yet
+    if (onBlur) {
+      onBlur(newItems);
+    }
   };
 
   const displayBalance = editable ? calculateBalance() : totalBalance;
