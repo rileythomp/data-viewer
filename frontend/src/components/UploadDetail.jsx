@@ -12,6 +12,7 @@ export default function UploadDetail() {
     const [dataLoading, setDataLoading] = useState(false);
     const [error, setError] = useState('');
     const [page, setPage] = useState(1);
+    const [viewMode, setViewMode] = useState('table');
     const pageSize = 50;
 
     const fetchUpload = async () => {
@@ -79,6 +80,33 @@ export default function UploadDetail() {
         if (value === null || value === undefined) return '';
         if (typeof value === 'object') return JSON.stringify(value);
         return String(value);
+    };
+
+    const formatAsCsv = (columns, data) => {
+        const escapeCell = (value) => {
+            if (value === null || value === undefined) return '';
+            const str = String(value);
+            // Escape quotes and wrap in quotes if contains comma, quote, or newline
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+
+        const headerRow = columns.map(escapeCell).join(',');
+        const dataRows = data.map(row => row.map(escapeCell).join(','));
+        return [headerRow, ...dataRows].join('\n');
+    };
+
+    const formatAsJsonObjects = (columns, data) => {
+        const objects = data.map(row => {
+            const obj = {};
+            columns.forEach((col, idx) => {
+                obj[col] = row[idx];
+            });
+            return obj;
+        });
+        return JSON.stringify(objects, null, 2);
     };
 
     if (loading) {
@@ -168,38 +196,66 @@ export default function UploadDetail() {
             {error && <div className="error">{error}</div>}
 
             <div className="upload-data-section">
-                <h2>Data Preview</h2>
+                <div className="upload-data-header">
+                    <h2>Data Preview</h2>
+                    {dataResponse && dataResponse.data && dataResponse.data.length > 0 && (
+                        <div className="view-toggle">
+                            <button
+                                className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                                onClick={() => setViewMode('table')}
+                            >
+                                Table
+                            </button>
+                            <button
+                                className={`view-toggle-btn ${viewMode === 'raw' ? 'active' : ''}`}
+                                onClick={() => setViewMode('raw')}
+                            >
+                                Raw Data
+                            </button>
+                        </div>
+                    )}
+                </div>
 
                 {dataLoading ? (
                     <div className="loading">Loading data...</div>
                 ) : dataResponse && dataResponse.data && dataResponse.data.length > 0 ? (
                     <>
-                        <div className="upload-table-container">
-                            <table className="upload-table">
-                                <thead>
-                                    <tr>
-                                        <th className="row-number-col">#</th>
-                                        {dataResponse.columns?.map((col, idx) => (
-                                            <th key={idx}>{col}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {dataResponse.data.map((row, rowIdx) => (
-                                        <tr key={rowIdx}>
-                                            <td className="row-number-col">
-                                                {(page - 1) * pageSize + rowIdx + 1}
-                                            </td>
-                                            {row.map((cell, cellIdx) => (
-                                                <td key={cellIdx}>{formatCellValue(cell)}</td>
+                        {viewMode === 'raw' ? (
+                            <div className="upload-raw-data">
+                                <pre>
+                                    {upload.file_type === 'csv'
+                                        ? formatAsCsv(dataResponse.columns, dataResponse.data)
+                                        : formatAsJsonObjects(dataResponse.columns, dataResponse.data)}
+                                </pre>
+                            </div>
+                        ) : (
+                            <div className="upload-table-container">
+                                <table className="upload-table">
+                                    <thead>
+                                        <tr>
+                                            <th className="row-number-col">#</th>
+                                            {dataResponse.columns?.map((col, idx) => (
+                                                <th key={idx}>{col}</th>
                                             ))}
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody>
+                                        {dataResponse.data.map((row, rowIdx) => (
+                                            <tr key={rowIdx}>
+                                                <td className="row-number-col">
+                                                    {(page - 1) * pageSize + rowIdx + 1}
+                                                </td>
+                                                {row.map((cell, cellIdx) => (
+                                                    <td key={cellIdx}>{formatCellValue(cell)}</td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
 
-                        {totalPages > 1 && (
+                        {viewMode === 'table' && totalPages > 1 && (
                             <div className="pagination">
                                 <button
                                     className="btn-secondary pagination-btn"

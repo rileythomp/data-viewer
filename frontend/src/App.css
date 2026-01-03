@@ -2502,11 +2502,41 @@ select.account-select {
   color: var(--color-text-primary);
 }
 
+.upload-data-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.upload-data-header h2 {
+  margin: 0;
+}
+
 .upload-table-container {
   overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background-color: var(--color-surface);
+}
+
+.upload-raw-data {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  overflow-x: auto;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.upload-raw-data pre {
+  margin: 0;
+  padding: var(--space-4);
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  white-space: pre;
 }
 
 .upload-table {
