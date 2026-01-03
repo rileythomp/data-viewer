@@ -1,0 +1,399 @@
+package repository
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+
+	"finance-tracker/internal/models"
+)
+
+type DashboardRepository struct {
+	db *sql.DB
+}
+
+func NewDashboardRepository(db *sql.DB) *DashboardRepository {
+	return &DashboardRepository{db: db}
+}
+
+func (r *DashboardRepository) GetAll(page, pageSize int) (*models.DashboardListResponse, error) {
+	// Get total count
+	var total int
+	err := r.db.QueryRow("SELECT COUNT(*) FROM dashboards").Scan(&total)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count dashboards: %w", err)
+	}
+
+	// Get paginated dashboards
+	offset := (page - 1) * pageSize
+	query := `
+		SELECT id, name, description, position, created_at, updated_at
+		FROM dashboards
+		ORDER BY position ASC, name ASC
+		LIMIT $1 OFFSET $2
+	`
+	rows, err := r.db.Query(query, pageSize, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query dashboards: %w", err)
+	}
+	defer rows.Close()
+
+	var dashboards []models.DashboardWithItems
+	for rows.Next() {
+		var d models.Dashboard
+		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan dashboard: %w", err)
+		}
+
+		// Get items for this dashboard
+		withItems, err := r.GetWithItems(d.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get dashboard items: %w", err)
+		}
+		dashboards = append(dashboards, *withItems)
+	}
+
+	return &models.DashboardListResponse{
+		Dashboards: dashboards,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+	}, nil
+}
+
+func (r *DashboardRepository) GetByID(id int) (*models.Dashboard, error) {
+	query := `
+		SELECT id, name, description, position, created_at, updated_at
+		FROM dashboards
+		WHERE id = $1
+	`
+	var d models.Dashboard
+	err := r.db.QueryRow(query, id).Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dashboard: %w", err)
+	}
+	return &d, nil
+}
+
+func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, error) {
+	dashboard, err := r.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if dashboard == nil {
+		return nil, nil
+	}
+
+	// Get ALL non-archived accounts for balance resolution
+	allAccountsQuery := `
+		SELECT id, account_name, account_info, current_balance, is_archived, position, is_calculated, formula, created_at, updated_at
+		FROM account_balances
+		WHERE is_archived = false
+	`
+	allRows, err := r.db.Query(allAccountsQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query accounts: %w", err)
+	}
+	defer allRows.Close()
+
+	var allAccounts []models.Account
+	for allRows.Next() {
+		var a models.Account
+		var formulaJSON []byte
+		err := allRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan account: %w", err)
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &a.Formula)
+		}
+		a.GroupIDs = []int{}
+		allAccounts = append(allAccounts, a)
+	}
+
+	// Resolve calculated account balances
+	ResolveCalculatedBalances(allAccounts)
+
+	// Build account lookup map
+	accountMap := make(map[int]*models.Account)
+	for i := range allAccounts {
+		accountMap[allAccounts[i].ID] = &allAccounts[i]
+	}
+
+	// Get all groups with their accounts
+	groupsMap, err := r.getGroupsWithAccounts(accountMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get groups: %w", err)
+	}
+
+	// Get dashboard items
+	itemsQuery := `
+		SELECT id, dashboard_id, item_type, item_id, position
+		FROM dashboard_items
+		WHERE dashboard_id = $1
+		ORDER BY position ASC
+	`
+	itemRows, err := r.db.Query(itemsQuery, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query dashboard items: %w", err)
+	}
+	defer itemRows.Close()
+
+	var items []models.ListItem
+	var totalBalance float64
+
+	for itemRows.Next() {
+		var di models.DashboardItem
+		if err := itemRows.Scan(&di.ID, &di.DashboardID, &di.ItemType, &di.ItemID, &di.Position); err != nil {
+			return nil, fmt.Errorf("failed to scan dashboard item: %w", err)
+		}
+
+		if di.ItemType == "account" {
+			if acc, ok := accountMap[di.ItemID]; ok {
+				items = append(items, models.ListItem{
+					Type:    "account",
+					Account: acc,
+				})
+				totalBalance += acc.CurrentBalance
+			}
+		} else if di.ItemType == "group" {
+			if group, ok := groupsMap[di.ItemID]; ok {
+				items = append(items, models.ListItem{
+					Type:  "group",
+					Group: group,
+				})
+				totalBalance += group.TotalBalance
+			}
+		}
+	}
+
+	return &models.DashboardWithItems{
+		Dashboard:    *dashboard,
+		Items:        items,
+		TotalBalance: totalBalance,
+	}, nil
+}
+
+func (r *DashboardRepository) getGroupsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.AccountGroupWithAccounts, error) {
+	// Get all non-archived groups
+	groupsQuery := `
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		FROM account_groups
+		WHERE is_archived = false
+	`
+	groupRows, err := r.db.Query(groupsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer groupRows.Close()
+
+	var groups []models.AccountGroup
+	for groupRows.Next() {
+		var g models.AccountGroup
+		var formulaJSON []byte
+		err := groupRows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &g.Formula)
+		}
+		groups = append(groups, g)
+	}
+
+	// Get all memberships
+	membershipQuery := `
+		SELECT account_id, group_id, position_in_group
+		FROM account_group_memberships
+		ORDER BY group_id, position_in_group
+	`
+	membershipRows, err := r.db.Query(membershipQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer membershipRows.Close()
+
+	groupAccounts := make(map[int][]models.AccountInGroup)
+	for membershipRows.Next() {
+		var accountID, groupID, positionInGroup int
+		if err := membershipRows.Scan(&accountID, &groupID, &positionInGroup); err != nil {
+			return nil, err
+		}
+		if acc, ok := accountMap[accountID]; ok {
+			groupAccounts[groupID] = append(groupAccounts[groupID], models.AccountInGroup{
+				Account:         *acc,
+				PositionInGroup: positionInGroup,
+			})
+		}
+	}
+
+	// Build groups with accounts and calculate balances
+	result := make(map[int]*models.AccountGroupWithAccounts)
+	for _, g := range groups {
+		accounts := groupAccounts[g.ID]
+
+		var totalBalance float64
+		if g.IsCalculated && len(g.Formula) > 0 {
+			for _, item := range g.Formula {
+				if acc, ok := accountMap[item.AccountID]; ok {
+					totalBalance += item.Coefficient * acc.CurrentBalance
+				}
+			}
+		} else {
+			for _, a := range accounts {
+				totalBalance += a.CurrentBalance
+			}
+		}
+
+		result[g.ID] = &models.AccountGroupWithAccounts{
+			AccountGroup: g,
+			TotalBalance: totalBalance,
+			Accounts:     accounts,
+		}
+	}
+
+	return result, nil
+}
+
+func (r *DashboardRepository) Create(req *models.CreateDashboardRequest) (*models.DashboardWithItems, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get max position
+	var maxPos sql.NullInt64
+	err = tx.QueryRow("SELECT MAX(position) FROM dashboards").Scan(&maxPos)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get max position: %w", err)
+	}
+	newPos := 1
+	if maxPos.Valid {
+		newPos = int(maxPos.Int64) + 1
+	}
+
+	// Insert dashboard
+	query := `
+		INSERT INTO dashboards (name, description, position)
+		VALUES ($1, $2, $3)
+		RETURNING id, name, description, position, created_at, updated_at
+	`
+	var d models.Dashboard
+	err = tx.QueryRow(query, req.Name, req.Description, newPos).Scan(
+		&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create dashboard: %w", err)
+	}
+
+	// Insert items
+	position := 0
+	for _, accountID := range req.AccountIDs {
+		position++
+		_, err = tx.Exec(
+			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+			d.ID, "account", accountID, position,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add account to dashboard: %w", err)
+		}
+	}
+	for _, groupID := range req.GroupIDs {
+		position++
+		_, err = tx.Exec(
+			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+			d.ID, "group", groupID, position,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add group to dashboard: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return r.GetWithItems(d.ID)
+}
+
+func (r *DashboardRepository) Update(id int, req *models.UpdateDashboardRequest) (*models.DashboardWithItems, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Update dashboard metadata
+	query := `
+		UPDATE dashboards
+		SET name = $1, description = $2, updated_at = NOW()
+		WHERE id = $3
+		RETURNING id, name, description, position, created_at, updated_at
+	`
+	var d models.Dashboard
+	err = tx.QueryRow(query, req.Name, req.Description, id).Scan(
+		&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to update dashboard: %w", err)
+	}
+
+	// Delete existing items
+	_, err = tx.Exec("DELETE FROM dashboard_items WHERE dashboard_id = $1", id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete dashboard items: %w", err)
+	}
+
+	// Insert new items
+	position := 0
+	for _, accountID := range req.AccountIDs {
+		position++
+		_, err = tx.Exec(
+			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+			id, "account", accountID, position,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add account to dashboard: %w", err)
+		}
+	}
+	for _, groupID := range req.GroupIDs {
+		position++
+		_, err = tx.Exec(
+			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+			id, "group", groupID, position,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add group to dashboard: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return r.GetWithItems(id)
+}
+
+func (r *DashboardRepository) Delete(id int) error {
+	result, err := r.db.Exec("DELETE FROM dashboards WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete dashboard: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("dashboard not found")
+	}
+
+	return nil
+}
