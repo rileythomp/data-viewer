@@ -4,6 +4,7 @@ import { ArrowLeft, Pencil, Archive, ExternalLink, X } from 'lucide-react';
 import { accountsApi, groupsApi } from '../services/api';
 import EditAccountModal from './EditAccountModal';
 import BalanceHistoryTable from './BalanceHistoryTable';
+import BalanceHistoryChart from './BalanceHistoryChart';
 import FormulaDisplay from './FormulaDisplay';
 
 export default function AccountDetail() {
@@ -18,6 +19,7 @@ export default function AccountDetail() {
   const [balanceValue, setBalanceValue] = useState('');
   const [groups, setGroups] = useState([]);
   const [allAccounts, setAllAccounts] = useState([]);
+  const [viewMode, setViewMode] = useState('table');
   const inputRef = useRef(null);
 
   const fetchAccount = async () => {
@@ -294,13 +296,33 @@ export default function AccountDetail() {
         </div>
 
         <div className="detail-history">
-          <h2 className="detail-section-title">Balance History</h2>
+          <div className="history-header">
+            <h2 className="detail-section-title">Balance History</h2>
+            {history.length > 0 && (
+              <div className="view-toggle">
+                <button
+                  className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                  onClick={() => setViewMode('table')}
+                >
+                  Table
+                </button>
+                <button
+                  className={`view-toggle-btn ${viewMode === 'chart' ? 'active' : ''}`}
+                  onClick={() => setViewMode('chart')}
+                >
+                  Chart
+                </button>
+              </div>
+            )}
+          </div>
           {history.length === 0 ? (
             <p className="empty-state-small">No history records yet.</p>
-          ) : (
+          ) : viewMode === 'table' ? (
             <div className="history-table-container">
               <BalanceHistoryTable history={history} showAccountName={false} />
             </div>
+          ) : (
+            <BalanceHistoryChart history={history} />
           )}
         </div>
       </div>
