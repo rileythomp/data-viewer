@@ -5,6 +5,7 @@ import NavBar from './components/NavBar'
 import AccountList from './components/AccountList'
 import AccountDetail from './components/AccountDetail'
 import GroupDetail from './components/GroupDetail'
+import SettingsPage from './components/SettingsPage'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route path="/" element={<AccountList />} />
           <Route path="/accounts/:id" element={<AccountDetail />} />
           <Route path="/groups/:id" element={<GroupDetail />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

@@ -6,7 +6,15 @@ import (
 	"fmt"
 
 	"finance-tracker/internal/models"
+	"finance-tracker/internal/validation"
 )
+
+// HistoryEntry represents a history record to be inserted
+type HistoryEntry struct {
+	AccountID   int
+	AccountName string
+	Balance     float64
+}
 
 type AccountRepository struct {
 	db *sql.DB
@@ -337,6 +345,54 @@ func (r *AccountRepository) UpdateBalance(id int, balance float64) (*models.Acco
 		return nil, fmt.Errorf("failed to create history record: %w", err)
 	}
 
+	// Propagate history to transitively dependent calculated accounts
+	allAccounts, err := r.getAllAccountsTx(tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch accounts for dependency propagation: %w", err)
+	}
+
+	dependentIDs := validation.FindTransitiveDependents(id, allAccounts)
+	if len(dependentIDs) > 0 {
+		// Build account map and balance map
+		accountMap := make(map[int]*models.Account)
+		balanceMap := make(map[int]float64)
+		for i := range allAccounts {
+			accountMap[allAccounts[i].ID] = &allAccounts[i]
+			balanceMap[allAccounts[i].ID] = allAccounts[i].CurrentBalance
+		}
+		// Update balance map with the new balance for the updated account
+		balanceMap[id] = balance
+
+		// Calculate new balances and collect history entries
+		var historyEntries []HistoryEntry
+		for _, depID := range dependentIDs {
+			depAccount := accountMap[depID]
+			if depAccount == nil || depAccount.IsArchived {
+				// Skip archived accounts (but they're still in balanceMap for formula calculations)
+				continue
+			}
+			if !depAccount.IsCalculated || len(depAccount.Formula) == 0 {
+				continue
+			}
+
+			// Calculate new balance from formula
+			newBalance := calculateFormulaBalance(depAccount.Formula, balanceMap)
+			// Update balance map for subsequent calculations
+			balanceMap[depID] = newBalance
+
+			historyEntries = append(historyEntries, HistoryEntry{
+				AccountID:   depID,
+				AccountName: depAccount.AccountName,
+				Balance:     newBalance,
+			})
+		}
+
+		// Batch insert history records
+		if err := r.insertHistoryRecordsTx(tx, historyEntries); err != nil {
+			return nil, fmt.Errorf("failed to insert dependent history records: %w", err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -512,4 +568,196 @@ func (r *AccountRepository) UpdateFormula(id int, isCalculated bool, formula []m
 	}
 
 	return &a, nil
+}
+
+func (r *AccountRepository) GetAllIncludingArchived() ([]models.Account, error) {
+	query := `
+		SELECT id, account_name, account_info, current_balance, is_archived, position, is_calculated, formula, created_at, updated_at
+		FROM account_balances
+		ORDER BY account_name ASC
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []models.Account
+	for rows.Next() {
+		var a models.Account
+		var formulaJSON []byte
+		if err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan account: %w", err)
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &a.Formula)
+		}
+		accounts = append(accounts, a)
+	}
+
+	// Fetch group memberships for all accounts
+	membershipQuery := `
+		SELECT account_id, group_id FROM account_group_memberships
+		ORDER BY account_id, group_id
+	`
+	membershipRows, err := r.db.Query(membershipQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query memberships: %w", err)
+	}
+	defer membershipRows.Close()
+
+	memberships := make(map[int][]int)
+	for membershipRows.Next() {
+		var accountID, groupID int
+		if err := membershipRows.Scan(&accountID, &groupID); err != nil {
+			return nil, fmt.Errorf("failed to scan membership: %w", err)
+		}
+		memberships[accountID] = append(memberships[accountID], groupID)
+	}
+
+	// Assign group IDs to accounts
+	for i := range accounts {
+		if groupIDs, ok := memberships[accounts[i].ID]; ok {
+			accounts[i].GroupIDs = groupIDs
+		} else {
+			accounts[i].GroupIDs = []int{}
+		}
+	}
+
+	// Resolve calculated account balances
+	ResolveCalculatedBalances(accounts)
+
+	return accounts, nil
+}
+
+func (r *AccountRepository) Unarchive(id int) (*models.Account, error) {
+	query := `
+		UPDATE account_balances
+		SET is_archived = false, updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, is_calculated, formula, created_at, updated_at
+	`
+	var a models.Account
+	var formulaJSON []byte
+	err := r.db.QueryRow(query, id).Scan(
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to unarchive account: %w", err)
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &a.Formula)
+	}
+	a.GroupIDs = []int{}
+	return &a, nil
+}
+
+func (r *AccountRepository) Delete(id int) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Delete from account_group_memberships
+	_, err = tx.Exec("DELETE FROM account_group_memberships WHERE account_id = $1", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete memberships: %w", err)
+	}
+
+	// Delete from balance_history
+	_, err = tx.Exec("DELETE FROM balance_history WHERE account_id = $1", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete history: %w", err)
+	}
+
+	// Delete the account
+	result, err := tx.Exec("DELETE FROM account_balances WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete account: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("account not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// getAllAccountsTx fetches all accounts within an existing transaction
+func (r *AccountRepository) getAllAccountsTx(tx *sql.Tx) ([]models.Account, error) {
+	query := `
+		SELECT id, account_name, account_info, current_balance, is_archived, position, is_calculated, formula, created_at, updated_at
+		FROM account_balances
+		ORDER BY account_name ASC
+	`
+	rows, err := tx.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []models.Account
+	for rows.Next() {
+		var a models.Account
+		var formulaJSON []byte
+		if err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan account: %w", err)
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &a.Formula)
+		}
+		accounts = append(accounts, a)
+	}
+
+	return accounts, nil
+}
+
+// calculateFormulaBalance calculates the balance from a formula using provided balance map
+func calculateFormulaBalance(formula []models.FormulaItem, balanceMap map[int]float64) float64 {
+	var total float64
+	for _, item := range formula {
+		if balance, ok := balanceMap[item.AccountID]; ok {
+			total += item.Coefficient * balance
+		}
+		// If account not found in map, it contributes 0 (handles deleted accounts)
+	}
+	return total
+}
+
+// insertHistoryRecordsTx batch inserts history records efficiently
+func (r *AccountRepository) insertHistoryRecordsTx(tx *sql.Tx, entries []HistoryEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	query := `
+		INSERT INTO balance_history (account_id, account_name_snapshot, balance)
+		VALUES ($1, $2, $3)
+	`
+	stmt, err := tx.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("failed to prepare history insert: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, entry := range entries {
+		_, err = stmt.Exec(entry.AccountID, entry.AccountName, entry.Balance)
+		if err != nil {
+			return fmt.Errorf("failed to insert history for account %d: %w", entry.AccountID, err)
+		}
+	}
+
+	return nil
 }

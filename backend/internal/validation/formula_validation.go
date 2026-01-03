@@ -79,3 +79,104 @@ func canReach(from, target int, graph map[int][]int, visited map[int]bool, path 
 
 	return false
 }
+
+// BuildReverseDependencyMap returns a map of accountID -> accounts that depend on it.
+// If account A depends on account B, the map will contain B -> [A].
+func BuildReverseDependencyMap(allAccounts []models.Account) map[int][]int {
+	reverseMap := make(map[int][]int)
+
+	for _, account := range allAccounts {
+		if account.IsCalculated && len(account.Formula) > 0 {
+			for _, item := range account.Formula {
+				reverseMap[item.AccountID] = append(reverseMap[item.AccountID], account.ID)
+			}
+		}
+	}
+
+	return reverseMap
+}
+
+// FindTransitiveDependents finds all accounts that transitively depend on accountID.
+// Returns them in topological order (dependencies resolved before dependents).
+func FindTransitiveDependents(accountID int, allAccounts []models.Account) []int {
+	reverseMap := BuildReverseDependencyMap(allAccounts)
+
+	// BFS to find all transitive dependents
+	visited := make(map[int]bool)
+	var dependents []int
+	queue := []int{accountID}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		for _, depID := range reverseMap[current] {
+			if !visited[depID] {
+				visited[depID] = true
+				dependents = append(dependents, depID)
+				queue = append(queue, depID)
+			}
+		}
+	}
+
+	if len(dependents) == 0 {
+		return nil
+	}
+
+	// Build dependency graph for topological sort
+	// We need: accountID -> list of account IDs it depends on
+	graph := make(map[int][]int)
+	accountSet := make(map[int]bool)
+	for _, id := range dependents {
+		accountSet[id] = true
+	}
+
+	for _, account := range allAccounts {
+		if accountSet[account.ID] && account.IsCalculated && len(account.Formula) > 0 {
+			for _, item := range account.Formula {
+				graph[account.ID] = append(graph[account.ID], item.AccountID)
+			}
+		}
+	}
+
+	// Topological sort using Kahn's algorithm
+	// Calculate in-degrees (only counting edges within our dependent set)
+	inDegree := make(map[int]int)
+	for _, id := range dependents {
+		inDegree[id] = 0
+	}
+	for _, id := range dependents {
+		for _, dep := range graph[id] {
+			if accountSet[dep] {
+				inDegree[id]++
+			}
+		}
+	}
+
+	// Start with nodes that have no dependencies within the set
+	var sortQueue []int
+	for _, id := range dependents {
+		if inDegree[id] == 0 {
+			sortQueue = append(sortQueue, id)
+		}
+	}
+
+	var sorted []int
+	for len(sortQueue) > 0 {
+		current := sortQueue[0]
+		sortQueue = sortQueue[1:]
+		sorted = append(sorted, current)
+
+		// Reduce in-degree for nodes that depend on current
+		for _, depID := range reverseMap[current] {
+			if accountSet[depID] {
+				inDegree[depID]--
+				if inDegree[depID] == 0 {
+					sortQueue = append(sortQueue, depID)
+				}
+			}
+		}
+	}
+
+	return sorted
+}

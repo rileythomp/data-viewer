@@ -28,11 +28,14 @@ func New(db *sql.DB) *mux.Router {
 	// Unified list endpoint for main page
 	api.HandleFunc("/list", groupHandler.GetGroupedList).Methods("GET")
 
-	// Account routes
+	// Account routes - /all must come before /{id} routes
+	api.HandleFunc("/accounts/all", accountHandler.GetAllIncludingArchived).Methods("GET")
 	api.HandleFunc("/accounts", accountHandler.GetAll).Methods("GET")
 	api.HandleFunc("/accounts", accountHandler.Create).Methods("POST")
 	api.HandleFunc("/accounts/positions", accountHandler.UpdatePositions).Methods("PATCH")
+	api.HandleFunc("/accounts/{id}/unarchive", accountHandler.Unarchive).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}", accountHandler.GetByID).Methods("GET")
+	api.HandleFunc("/accounts/{id}", accountHandler.Delete).Methods("DELETE")
 	api.HandleFunc("/accounts/{id}/name", accountHandler.UpdateName).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}/info", accountHandler.UpdateInfo).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}/balance", accountHandler.UpdateBalance).Methods("PATCH")
@@ -42,12 +45,15 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/accounts/{id}/groups", accountHandler.SetGroupMemberships).Methods("PUT")
 	api.HandleFunc("/accounts/{id}/formula", accountHandler.UpdateFormula).Methods("PATCH")
 
-	// Group routes
+	// Group routes - /all must come before /{id} routes
+	api.HandleFunc("/groups/all", groupHandler.GetAllIncludingArchived).Methods("GET")
 	api.HandleFunc("/groups", groupHandler.GetAll).Methods("GET")
 	api.HandleFunc("/groups", groupHandler.Create).Methods("POST")
 	api.HandleFunc("/groups/positions", groupHandler.UpdatePositions).Methods("PATCH")
+	api.HandleFunc("/groups/{id}/unarchive", groupHandler.Unarchive).Methods("PATCH")
 	api.HandleFunc("/groups/{id}", groupHandler.GetByID).Methods("GET")
 	api.HandleFunc("/groups/{id}", groupHandler.Update).Methods("PATCH")
+	api.HandleFunc("/groups/{id}", groupHandler.Delete).Methods("DELETE")
 	api.HandleFunc("/groups/{id}/archive", groupHandler.Archive).Methods("PATCH")
 	api.HandleFunc("/groups/{id}/account-positions", groupHandler.UpdateAccountPositionsInGroup).Methods("PATCH")
 

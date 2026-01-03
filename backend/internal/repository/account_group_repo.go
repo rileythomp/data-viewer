@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 
 	"finance-tracker/internal/models"
 )
@@ -479,4 +480,83 @@ func (r *AccountGroupRepository) GetGroupedList() (*models.GroupedAccountsRespon
 		Items:        finalItems,
 		TotalBalance: totalBalance,
 	}, nil
+}
+
+func (r *AccountGroupRepository) GetAllIncludingArchived() ([]models.AccountGroup, error) {
+	query := `
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		FROM account_groups
+		ORDER BY group_name ASC
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var groups []models.AccountGroup
+	for rows.Next() {
+		var g models.AccountGroup
+		var formulaJSON []byte
+		err := rows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &g.Formula)
+		}
+		groups = append(groups, g)
+	}
+	return groups, rows.Err()
+}
+
+func (r *AccountGroupRepository) Unarchive(id int) (*models.AccountGroup, error) {
+	query := `
+		UPDATE account_groups
+		SET is_archived = false, updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+	`
+	var g models.AccountGroup
+	var formulaJSON []byte
+	err := r.db.QueryRow(query, id).Scan(
+		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &g.Formula)
+	}
+	return &g, nil
+}
+
+func (r *AccountGroupRepository) Delete(id int) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete from account_group_memberships (accounts become ungrouped)
+	_, err = tx.Exec("DELETE FROM account_group_memberships WHERE group_id = $1", id)
+	if err != nil {
+		return err
+	}
+
+	// Delete the group
+	result, err := tx.Exec("DELETE FROM account_groups WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("group not found")
+	}
+
+	return tx.Commit()
 }

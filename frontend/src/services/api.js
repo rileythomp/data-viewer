@@ -15,6 +15,28 @@ export const groupsApi = {
     return res.json();
   },
 
+  getAllIncludingArchived: async () => {
+    const res = await fetch(`${API_BASE}/groups/all`);
+    if (!res.ok) throw new Error('Failed to fetch groups');
+    return res.json();
+  },
+
+  unarchive: async (id) => {
+    const res = await fetch(`${API_BASE}/groups/${id}/unarchive`, {
+      method: 'PATCH',
+    });
+    if (!res.ok) throw new Error('Failed to unarchive group');
+    return res.json();
+  },
+
+  delete: async (id) => {
+    const res = await fetch(`${API_BASE}/groups/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete group');
+    return res.json();
+  },
+
   getById: async (id) => {
     const res = await fetch(`${API_BASE}/groups/${id}`);
     if (!res.ok) throw new Error('Failed to fetch group');
@@ -92,6 +114,28 @@ export const accountsApi = {
   getAll: async () => {
     const res = await fetch(`${API_BASE}/accounts`);
     if (!res.ok) throw new Error('Failed to fetch accounts');
+    return res.json();
+  },
+
+  getAllIncludingArchived: async () => {
+    const res = await fetch(`${API_BASE}/accounts/all`);
+    if (!res.ok) throw new Error('Failed to fetch accounts');
+    return res.json();
+  },
+
+  unarchive: async (id) => {
+    const res = await fetch(`${API_BASE}/accounts/${id}/unarchive`, {
+      method: 'PATCH',
+    });
+    if (!res.ok) throw new Error('Failed to unarchive account');
+    return res.json();
+  },
+
+  delete: async (id) => {
+    const res = await fetch(`${API_BASE}/accounts/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete account');
     return res.json();
   },
 
