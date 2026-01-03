@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, ChevronLeft, ChevronRight, FileSpreadsheet, FileJson } from 'lucide-react';
+import { ArrowLeft, Trash2, ChevronLeft, ChevronRight, FileSpreadsheet, FileJson, Loader, AlertCircle } from 'lucide-react';
 import { uploadsApi } from '../services/api';
 
 export default function UploadDetail() {
@@ -20,8 +20,10 @@ export default function UploadDetail() {
             setError('');
             const data = await uploadsApi.getById(id);
             setUpload(data);
+            return data;
         } catch (err) {
             setError(err.message);
+            return null;
         } finally {
             setLoading(false);
         }
@@ -43,8 +45,22 @@ export default function UploadDetail() {
         fetchUpload();
     }, [id]);
 
+    // Poll for status if upload is processing
     useEffect(() => {
-        if (upload) {
+        if (!upload || upload.status !== 'processing') return;
+
+        const pollInterval = setInterval(async () => {
+            const updated = await fetchUpload();
+            if (updated && (updated.status === 'completed' || updated.status === 'failed')) {
+                clearInterval(pollInterval);
+            }
+        }, 1000);
+
+        return () => clearInterval(pollInterval);
+    }, [upload?.status]);
+
+    useEffect(() => {
+        if (upload && upload.status === 'completed') {
             fetchData();
         }
     }, [upload, page]);
@@ -147,7 +163,7 @@ export default function UploadDetail() {
                             <span>Back</span>
                         </button>
                         <div className="detail-actions">
-                            <button onClick={handleDelete} className="btn-icon btn-icon-danger" title="Delete">
+                            <button onClick={handleDelete} className="btn-icon btn-icon-danger" title="Delete" disabled={upload.status === 'processing'}>
                                 <Trash2 size={18} />
                             </button>
                         </div>
@@ -159,12 +175,29 @@ export default function UploadDetail() {
                             <FileJson size={24} className="upload-icon" />
                         )}
                         <h1>{upload.name}</h1>
+                        {upload.status === 'processing' && (
+                            <span className="status-badge status-processing">
+                                <Loader size={14} className="spin" /> Processing
+                            </span>
+                        )}
+                        {upload.status === 'failed' && (
+                            <span className="status-badge status-failed">
+                                <AlertCircle size={14} /> Failed
+                            </span>
+                        )}
                     </div>
                     {upload.description && (
                         <p className="dashboard-description">{upload.description}</p>
                     )}
                 </div>
             </div>
+
+            {/* Show error message for failed uploads */}
+            {upload.status === 'failed' && upload.error_message && (
+                <div className="error upload-error">
+                    <strong>Processing Error:</strong> {upload.error_message}
+                </div>
+            )}
 
             <div className="upload-metadata">
                 <div className="upload-metadata-item">
@@ -198,7 +231,7 @@ export default function UploadDetail() {
             <div className="upload-data-section">
                 <div className="upload-data-header">
                     <h2>Data Preview</h2>
-                    {dataResponse && dataResponse.data && dataResponse.data.length > 0 && (
+                    {upload.status === 'completed' && dataResponse && dataResponse.data && dataResponse.data.length > 0 && (
                         <div className="view-toggle">
                             <button
                                 className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
@@ -216,7 +249,15 @@ export default function UploadDetail() {
                     )}
                 </div>
 
-                {dataLoading ? (
+                {upload.status === 'processing' ? (
+                    <div className="processing-placeholder">
+                        <Loader size={32} className="spin" />
+                        <p>Processing your file...</p>
+                        <p className="processing-hint">This may take a moment for large files.</p>
+                    </div>
+                ) : upload.status === 'failed' ? (
+                    <p className="empty-state">Data processing failed. Please try uploading again.</p>
+                ) : dataLoading ? (
                     <div className="loading">Loading data...</div>
                 ) : dataResponse && dataResponse.data && dataResponse.data.length > 0 ? (
                     <>
