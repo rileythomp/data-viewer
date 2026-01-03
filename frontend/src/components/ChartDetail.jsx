@@ -141,6 +141,7 @@ export default function ChartDetail() {
     setSelectedAccounts(newSelection);
     await chartsApi.update(id, chart.name, chart.description, newSelection, selectedGroups);
     await fetchChart();
+    await fetchHistory();
   };
 
   const handleGroupToggle = async (groupId) => {
@@ -150,6 +151,7 @@ export default function ChartDetail() {
     setSelectedGroups(newSelection);
     await chartsApi.update(id, chart.name, chart.description, selectedAccounts, newSelection);
     await fetchChart();
+    await fetchHistory();
   };
 
   const handleDelete = async () => {
