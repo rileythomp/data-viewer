@@ -51,6 +51,7 @@ export default function GroupCard({
   onViewHistory,
   crossGroupDragAccountId,
   dragHandleProps,
+  sortable = true,
 }) {
   const navigate = useNavigate();
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -97,13 +98,15 @@ export default function GroupCard({
       />
       <div className="group-card-header" onClick={handleToggleExpand}>
         <div className="group-header-left">
-          <div
-            className="group-drag-handle"
-            {...dragHandleProps}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GripVertical size={18} />
-          </div>
+          {sortable && (
+            <div
+              className="group-drag-handle"
+              {...dragHandleProps}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical size={18} />
+            </div>
+          )}
           <button
             className="btn-icon btn-expand"
             onClick={handleToggleExpand}

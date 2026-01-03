@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -23,6 +23,7 @@ import { Settings } from 'lucide-react';
 import { listApi, accountsApi, groupsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import GroupCard, { GroupCardPreview } from './GroupCard';
+import SortControls from './SortControls';
 import AccountForm from './AccountForm';
 import GroupForm from './GroupForm';
 import EditAccountModal from './EditAccountModal';
@@ -100,6 +101,9 @@ export default function AccountList() {
   const [crossGroupDragTarget, setCrossGroupDragTarget] = useState(null); // Track cross-group drag { groupId, position }
   const [originalListData, setOriginalListData] = useState(null); // Store original state for cross-group drag preview
   const [groupReordered, setGroupReordered] = useState(false); // Track if groups were reordered during drag
+  const [sortOrder, setSortOrder] = useState(() => {
+    return localStorage.getItem('groupSortOrder') || 'custom';
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -150,6 +154,42 @@ export default function AccountList() {
     }
     return { type: 'unknown', groupId: null, accountId: null };
   }, []);
+
+  // Handle sort order change
+  const handleSortChange = useCallback((newSortOrder) => {
+    setSortOrder(newSortOrder);
+    localStorage.setItem('groupSortOrder', newSortOrder);
+  }, []);
+
+  // Compute sorted items based on sort selection
+  const sortedItems = useMemo(() => {
+    if (sortOrder === 'custom') {
+      return listData.items;
+    }
+
+    const itemsCopy = [...listData.items];
+
+    const getGroupName = (item) => item.group?.group_name?.toLowerCase() || '';
+    const getAccountName = (item) => item.account?.account_name?.toLowerCase() || '';
+    const getGroupValue = (item) => item.group?.total_balance || 0;
+    const getAccountValue = (item) => item.account?.current_balance || 0;
+
+    const getName = (item) => item.type === 'group' ? getGroupName(item) : getAccountName(item);
+    const getValue = (item) => item.type === 'group' ? getGroupValue(item) : getAccountValue(item);
+
+    switch (sortOrder) {
+      case 'name-asc':
+        return itemsCopy.sort((a, b) => getName(a).localeCompare(getName(b)));
+      case 'name-desc':
+        return itemsCopy.sort((a, b) => getName(b).localeCompare(getName(a)));
+      case 'value-asc':
+        return itemsCopy.sort((a, b) => getValue(a) - getValue(b));
+      case 'value-desc':
+        return itemsCopy.sort((a, b) => getValue(b) - getValue(a));
+      default:
+        return itemsCopy;
+    }
+  }, [listData.items, sortOrder]);
 
   // Determine if we should insert after the target based on cursor position
   const shouldInsertAfter = useCallback((event) => {
@@ -855,9 +895,11 @@ export default function AccountList() {
     return <div className="loading">Loading...</div>;
   }
 
-  const sortableIds = listData.items.map((item) =>
+  const sortableIds = sortedItems.map((item) =>
     item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`
   );
+
+  const isSortable = sortOrder === 'custom';
 
   return (
     <div className="app">
@@ -875,6 +917,7 @@ export default function AccountList() {
           </div>
         </div>
         <div className="header-actions">
+          <SortControls sortOrder={sortOrder} onSortChange={handleSortChange} />
           <button
             onClick={() => {
               setShowAddGroupForm(!showAddGroupForm);
@@ -928,7 +971,7 @@ export default function AccountList() {
         >
           <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
             <div className="list-container">
-              {listData.items.map((item) => (
+              {sortedItems.map((item) => (
                 <SortableItem key={item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`} item={item}>
                   {item.type === 'group' ? (
                     <GroupCard
@@ -940,6 +983,7 @@ export default function AccountList() {
                       onUpdateBalance={handleUpdateBalance}
                       onViewHistory={setViewingHistory}
                       crossGroupDragAccountId={crossGroupDragTarget?.groupId === item.group.id ? activeItem?.data?.id : null}
+                      sortable={isSortable}
                     />
                   ) : (
                     <AccountCard
