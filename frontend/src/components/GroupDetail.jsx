@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Archive } from 'lucide-react';
+import { ArrowLeft, Pencil, Archive, Check, Calculator } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
@@ -20,12 +20,12 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { groupsApi, accountsApi } from '../services/api';
 import AccountCard from './AccountCard';
-import EditAccountModal from './EditAccountModal';
 import BalanceHistoryModal from './BalanceHistoryModal';
-import GroupForm from './GroupForm';
 import FormulaDisplay from './FormulaDisplay';
 import BalanceHistoryChart from './BalanceHistoryChart';
 import BalanceHistoryTable from './BalanceHistoryTable';
+import InlineEditableText from './InlineEditableText';
+import InlineColorPicker from './InlineColorPicker';
 
 function SortableAccountItem({ account, onUpdateBalance, onViewHistory, onRemoveFromGroup }) {
   const {
@@ -60,15 +60,15 @@ export default function GroupDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [group, setGroup] = useState(null);
-  const [allAccounts, setAllAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingAccount, setEditingAccount] = useState(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [viewingHistory, setViewingHistory] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [history, setHistory] = useState([]);
   const [historyViewMode, setHistoryViewMode] = useState('table');
+  const [isCalculated, setIsCalculated] = useState(false);
+  const [formulaItems, setFormulaItems] = useState([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -94,12 +94,8 @@ export default function GroupDetail() {
   const fetchGroup = async () => {
     try {
       setError('');
-      const [data, accounts] = await Promise.all([
-        groupsApi.getById(id),
-        accountsApi.getAll()
-      ]);
+      const data = await groupsApi.getById(id);
       setGroup(data);
-      setAllAccounts(accounts);
       await fetchHistory();
     } catch (err) {
       setError(err.message);
@@ -112,6 +108,22 @@ export default function GroupDetail() {
     fetchGroup();
   }, [id]);
 
+  // Initialize formula state when group loads
+  useEffect(() => {
+    if (group) {
+      setIsCalculated(group.is_calculated || false);
+      if (group.formula && Array.isArray(group.formula)) {
+        setFormulaItems(group.formula.map(item => ({
+          accountId: item.account_id,
+          accountName: (group.accounts || []).find(a => a.id === item.account_id)?.account_name || 'Unknown',
+          coefficient: item.coefficient
+        })));
+      } else {
+        setFormulaItems([]);
+      }
+    }
+  }, [group]);
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -119,24 +131,47 @@ export default function GroupDetail() {
     }).format(amount);
   };
 
-  const handleUpdateGroup = async (name, description, color, isCalculated, formula, accountIds = []) => {
-    await groupsApi.update(id, name, description, color, isCalculated, formula);
-
-    const currentAccountIds = (group.accounts || []).map(a => a.id);
-    const accountsToAdd = accountIds.filter(accId => !currentAccountIds.includes(accId));
-    const accountsToRemove = currentAccountIds.filter(accId => !accountIds.includes(accId));
-
-    // Remove accounts from this group (keeps other group memberships)
-    for (const accountId of accountsToRemove) {
-      await accountsApi.modifyGroupMembership(accountId, 'remove', parseInt(id));
-    }
-    // Add accounts to this group
-    for (let i = 0; i < accountsToAdd.length; i++) {
-      await accountsApi.modifyGroupMembership(accountsToAdd[i], 'add', parseInt(id));
-    }
-
+  // Save handlers for inline editing
+  const handleSaveName = async (name) => {
+    if (!name.trim()) throw new Error('Group name is required');
+    await groupsApi.update(id, name.trim(), group.group_description, group.color, group.is_calculated, group.formula);
     await fetchGroup();
-    setIsEditing(false);
+  };
+
+  const handleSaveDescription = async (description) => {
+    await groupsApi.update(id, group.group_name, description || '', group.color, group.is_calculated, group.formula);
+    await fetchGroup();
+  };
+
+  const handleSaveColor = async (color) => {
+    await groupsApi.update(id, group.group_name, group.group_description, color, group.is_calculated, group.formula);
+    await fetchGroup();
+  };
+
+  const handleToggleCalculated = async (newIsCalculated) => {
+    setIsCalculated(newIsCalculated);
+
+    // If turning off calculated mode, save immediately
+    if (!newIsCalculated) {
+      await groupsApi.update(id, group.group_name, group.group_description, group.color, false, null);
+      await fetchGroup();
+    }
+  };
+
+  const handleFormulaChange = (newFormulaItems) => {
+    setFormulaItems(newFormulaItems);
+  };
+
+  const handleFormulaSave = async () => {
+    if (!isCalculated) return;
+
+    const formulaData = formulaItems.map(item => ({
+      account_id: item.accountId,
+      coefficient: item.coefficient
+    }));
+
+    await groupsApi.update(id, group.group_name, group.group_description, group.color, isCalculated, formulaData.length > 0 ? formulaData : null);
+    await fetchGroup();
   };
 
   const handleArchive = async () => {
@@ -144,13 +179,6 @@ export default function GroupDetail() {
       await groupsApi.archive(group.id);
       navigate('/');
     }
-  };
-
-  const handleUpdateAccount = async (accountId, name, info) => {
-    await accountsApi.updateName(accountId, name);
-    await accountsApi.updateInfo(accountId, info || '');
-    await fetchGroup();
-    setEditingAccount(null);
   };
 
   const handleUpdateBalance = async (accountId, balance) => {
@@ -252,8 +280,12 @@ export default function GroupDetail() {
           <span>Back</span>
         </button>
         <div className="detail-actions">
-          <button onClick={() => setIsEditing(true)} className="btn-icon" title="Edit">
-            <Pencil size={18} />
+          <button
+            onClick={() => setIsEditMode(!isEditMode)}
+            className={`btn-icon ${isEditMode ? 'btn-icon-active' : ''}`}
+            title={isEditMode ? "Done editing" : "Edit"}
+          >
+            {isEditMode ? <Check size={18} /> : <Pencil size={18} />}
           </button>
           <button onClick={handleArchive} className="btn-icon btn-icon-danger" title="Archive">
             <Archive size={18} />
@@ -264,11 +296,26 @@ export default function GroupDetail() {
       <div className="detail-content">
         <div className="detail-main">
           <div className="group-detail-header">
-            <div
-              className="group-color-dot"
-              style={{ backgroundColor: group.color }}
-            />
-            <h1 className="detail-title">{group.group_name}</h1>
+            {isEditMode ? (
+              <InlineColorPicker value={group.color} onChange={handleSaveColor} />
+            ) : (
+              <div
+                className="group-color-dot"
+                style={{ backgroundColor: group.color }}
+              />
+            )}
+            {isEditMode ? (
+              <InlineEditableText
+                value={group.group_name}
+                onSave={handleSaveName}
+                type="input"
+                className="detail-title-input"
+                required
+                autoFocus
+              />
+            ) : (
+              <h1 className="detail-title">{group.group_name}</h1>
+            )}
           </div>
 
           {group.is_calculated && group.formula && group.formula.length > 0 ? (
@@ -284,10 +331,53 @@ export default function GroupDetail() {
             </div>
           )}
 
-          {group.group_description && (
+          {(group.group_description || isEditMode) && (
             <div className="detail-info-section">
               <span className="detail-info-label">Description</span>
-              <p className="detail-info-text">{group.group_description}</p>
+              {isEditMode ? (
+                <InlineEditableText
+                  value={group.group_description || ''}
+                  onSave={handleSaveDescription}
+                  type="textarea"
+                  className="detail-info-textarea"
+                  placeholder="Add description..."
+                  rows={4}
+                />
+              ) : (
+                <p className="detail-info-text">{group.group_description}</p>
+              )}
+            </div>
+          )}
+
+          {isEditMode && (group.accounts || []).length > 0 && (
+            <div className="detail-formula-section">
+              <div className="toggle-row">
+                <div className="toggle-label-content">
+                  <Calculator size={18} className="toggle-icon" />
+                  <span className="toggle-text">Calculated Balance</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={isCalculated}
+                    onChange={(e) => handleToggleCalculated(e.target.checked)}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+              <p className="form-hint">
+                Use a formula instead of summing all account balances.
+              </p>
+
+              {isCalculated && (
+                <FormulaDisplay
+                  formulaItems={formulaItems}
+                  accounts={group.accounts || []}
+                  editable={true}
+                  onChange={handleFormulaChange}
+                  onBlur={handleFormulaSave}
+                />
+              )}
             </div>
           )}
         </div>
@@ -371,28 +461,6 @@ export default function GroupDetail() {
           )}
         </div>
       </div>
-
-      {isEditing && (
-        <div className="modal-overlay" onClick={() => setIsEditing(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <GroupForm
-              initialData={group}
-              accounts={group.accounts || []}
-              allAccounts={allAccounts}
-              onSubmit={handleUpdateGroup}
-              onCancel={() => setIsEditing(false)}
-            />
-          </div>
-        </div>
-      )}
-
-      {editingAccount && (
-        <EditAccountModal
-          account={editingAccount}
-          onSubmit={handleUpdateAccount}
-          onClose={() => setEditingAccount(null)}
-        />
-      )}
 
       {viewingHistory && (
         <BalanceHistoryModal

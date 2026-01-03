@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Archive, ExternalLink, X } from 'lucide-react';
+import { ArrowLeft, Pencil, Archive, X, Check, Calculator } from 'lucide-react';
 import { accountsApi, groupsApi } from '../services/api';
-import EditAccountModal from './EditAccountModal';
 import BalanceHistoryTable from './BalanceHistoryTable';
 import BalanceHistoryChart from './BalanceHistoryChart';
 import FormulaDisplay from './FormulaDisplay';
+import InlineEditableText from './InlineEditableText';
+import { detectCircularDependency } from '../utils/formulaValidation';
 
 export default function AccountDetail() {
   const { id } = useParams();
@@ -14,12 +15,14 @@ export default function AccountDetail() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editingAccount, setEditingAccount] = useState(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [isEditingBalance, setIsEditingBalance] = useState(false);
   const [balanceValue, setBalanceValue] = useState('');
   const [groups, setGroups] = useState([]);
   const [allAccounts, setAllAccounts] = useState([]);
   const [viewMode, setViewMode] = useState('table');
+  const [isCalculated, setIsCalculated] = useState(false);
+  const [formulaItems, setFormulaItems] = useState([]);
   const inputRef = useRef(null);
 
   const fetchAccount = async () => {
@@ -81,18 +84,6 @@ export default function AccountDetail() {
       style: 'currency',
       currency: 'USD',
     }).format(amount);
-  };
-
-  const handleUpdateAccount = async (accountId, name, info, isCalculated, formula) => {
-    await accountsApi.updateName(accountId, name);
-    await accountsApi.updateInfo(accountId, info || '');
-
-    // Update formula if provided (isCalculated is not undefined)
-    if (isCalculated !== undefined) {
-      await accountsApi.updateFormula(accountId, isCalculated, formula);
-    }
-
-    await fetchAccount();
   };
 
   const handleArchive = async () => {
@@ -159,6 +150,76 @@ export default function AccountDetail() {
     }
   };
 
+  // Initialize formula state when account loads or edit mode changes
+  useEffect(() => {
+    if (account) {
+      setIsCalculated(account.is_calculated || false);
+      if (account.formula && Array.isArray(account.formula)) {
+        setFormulaItems(account.formula.map(item => ({
+          accountId: item.account_id,
+          accountName: allAccounts.find(a => a.id === item.account_id)?.account_name || 'Unknown',
+          coefficient: item.coefficient
+        })));
+      } else {
+        setFormulaItems([]);
+      }
+    }
+  }, [account, allAccounts]);
+
+  // Filter out the current account from formula options
+  const availableAccountsForFormula = allAccounts.filter(a => a.id !== account?.id);
+
+  // Save handlers for inline editing
+  const handleSaveName = async (name) => {
+    if (!name.trim()) throw new Error('Account name is required');
+    await accountsApi.updateName(account.id, name.trim());
+    await fetchAccount();
+  };
+
+  const handleSaveInfo = async (info) => {
+    await accountsApi.updateInfo(account.id, info || '');
+    await fetchAccount();
+  };
+
+  const handleToggleCalculated = async (newIsCalculated) => {
+    setIsCalculated(newIsCalculated);
+
+    // If turning off calculated mode, save immediately
+    if (!newIsCalculated) {
+      await accountsApi.updateFormula(account.id, false, null);
+      await fetchAccount();
+    }
+  };
+
+  const handleFormulaChange = (newFormulaItems) => {
+    setFormulaItems(newFormulaItems);
+  };
+
+  const handleFormulaSave = async () => {
+    if (!isCalculated) return;
+
+    // Validate circular dependencies
+    if (formulaItems.length > 0) {
+      const { hasCircle, errorMessage } = detectCircularDependency(
+        account.id,
+        formulaItems,
+        allAccounts
+      );
+      if (hasCircle) {
+        setError(errorMessage);
+        return;
+      }
+    }
+
+    const formulaData = formulaItems.map(item => ({
+      account_id: item.accountId,
+      coefficient: item.coefficient
+    }));
+
+    await accountsApi.updateFormula(account.id, isCalculated, formulaData.length > 0 ? formulaData : null);
+    await fetchAccount();
+  };
+
   if (loading) {
     return <div className="loading">Loading account...</div>;
   }
@@ -193,8 +254,12 @@ export default function AccountDetail() {
           <span>Back</span>
         </button>
         <div className="detail-actions">
-          <button onClick={() => setEditingAccount(account)} className="btn-icon" title="Edit">
-            <Pencil size={18} />
+          <button
+            onClick={() => setIsEditMode(!isEditMode)}
+            className={`btn-icon ${isEditMode ? 'btn-icon-active' : ''}`}
+            title={isEditMode ? "Done editing" : "Edit"}
+          >
+            {isEditMode ? <Check size={18} /> : <Pencil size={18} />}
           </button>
           <button onClick={handleArchive} className="btn-icon btn-icon-danger" title="Archive">
             <Archive size={18} />
@@ -204,7 +269,18 @@ export default function AccountDetail() {
 
       <div className="detail-content">
         <div className="detail-main">
-          <h1 className="detail-title">{account.account_name}</h1>
+          {isEditMode ? (
+            <InlineEditableText
+              value={account.account_name}
+              onSave={handleSaveName}
+              type="input"
+              className="detail-title-input"
+              required
+              autoFocus
+            />
+          ) : (
+            <h1 className="detail-title">{account.account_name}</h1>
+          )}
 
           {account.is_calculated && account.formula && account.formula.length > 0 ? (
             <FormulaDisplay
@@ -287,10 +363,55 @@ export default function AccountDetail() {
             )}
           </div>
 
-          {account.account_info && (
+          {(account.account_info || isEditMode) && (
             <div className="detail-info-section">
               <span className="detail-info-label">Notes</span>
-              <p className="detail-info-text">{account.account_info}</p>
+              {isEditMode ? (
+                <InlineEditableText
+                  value={account.account_info || ''}
+                  onSave={handleSaveInfo}
+                  type="textarea"
+                  className="detail-info-textarea"
+                  placeholder="Add notes..."
+                  rows={4}
+                />
+              ) : (
+                <p className="detail-info-text">{account.account_info}</p>
+              )}
+            </div>
+          )}
+
+          {isEditMode && availableAccountsForFormula.length > 0 && (
+            <div className="detail-formula-section">
+              <div className="toggle-row">
+                <div className="toggle-label-content">
+                  <Calculator size={18} className="toggle-icon" />
+                  <span className="toggle-text">Calculated Balance</span>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={isCalculated}
+                    onChange={(e) => handleToggleCalculated(e.target.checked)}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+              <p className="form-hint">
+                Use a formula to calculate this account's balance from other accounts.
+              </p>
+
+              {isCalculated && (
+                <FormulaDisplay
+                  formulaItems={formulaItems}
+                  accounts={availableAccountsForFormula}
+                  editable={true}
+                  onChange={handleFormulaChange}
+                  onBlur={handleFormulaSave}
+                  currentAccountId={account.id}
+                  allAccounts={allAccounts}
+                />
+              )}
             </div>
           )}
         </div>
@@ -327,14 +448,6 @@ export default function AccountDetail() {
         </div>
       </div>
 
-      {editingAccount && (
-        <EditAccountModal
-          account={editingAccount}
-          accounts={allAccounts}
-          onSubmit={handleUpdateAccount}
-          onClose={() => setEditingAccount(null)}
-        />
-      )}
     </div>
   );
 }

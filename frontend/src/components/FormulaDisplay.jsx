@@ -9,6 +9,7 @@ export default function FormulaDisplay({
   totalBalance,
   editable = false,
   onChange,
+  onBlur,
   currentAccountId = null,
   allAccounts = null,
 }) {
@@ -169,6 +170,7 @@ export default function FormulaDisplay({
             step="any"
             value={coefficient}
             onChange={(e) => setCoefficient(e.target.value)}
+            onBlur={onBlur}
             placeholder="Coefficient"
             className="formula-coefficient-input"
           />
@@ -176,6 +178,7 @@ export default function FormulaDisplay({
           <select
             value=""
             onChange={(e) => handleAddFormulaItem(e.target.value)}
+            onBlur={onBlur}
             className="formula-account-select"
           >
             <option value="">Select account...</option>
