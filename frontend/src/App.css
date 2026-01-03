@@ -566,6 +566,10 @@
   border: 1px solid var(--color-border);
 }
 
+.formula-items-no-margin {
+  margin-bottom: 0;
+}
+
 .formula-item {
   display: flex;
   align-items: center;

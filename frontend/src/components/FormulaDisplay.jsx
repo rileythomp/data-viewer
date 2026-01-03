@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calculator, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 export default function FormulaDisplay({
   formulaItems,
@@ -91,13 +91,8 @@ export default function FormulaDisplay({
 
   return (
     <div className="formula-section formula-display">
-      <div className="formula-header">
-        <Calculator size={16} />
-        <span>{editable ? 'Formula' : 'Calculated Balance'}</span>
-      </div>
-
       {formulaItems && formulaItems.length > 0 && (
-        <div className="formula-items formula-items-vertical">
+        <div className={`formula-items formula-items-vertical${!editable ? ' formula-items-no-margin' : ''}`}>
           {formulaItems.map((item, index) => {
             const normalized = normalizeItem(item);
             const isPositive = normalized.coefficient >= 0;
