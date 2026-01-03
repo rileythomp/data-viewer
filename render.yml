@@ -1,0 +1,54 @@
+databases:
+  - name: finance-tracker-db
+    plan: free
+    databaseName: finances
+    user: financeuser
+
+services:
+  # Go Backend API
+  - type: web
+    name: finance-tracker-api
+    runtime: go
+    plan: free
+    rootDir: backend
+    buildCommand: go build -o server ./cmd/server
+    startCommand: ./server
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: finance-tracker-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: finance-tracker-db
+          property: port
+      - key: DB_USER
+        fromDatabase:
+          name: finance-tracker-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: finance-tracker-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: finance-tracker-db
+          property: database
+      - key: SERVER_PORT
+        value: "8080"
+
+  # React Frontend (Static Site)
+  - type: web
+    name: finance-tracker-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://finance-tracker-api.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
