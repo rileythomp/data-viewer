@@ -2406,6 +2406,11 @@ select.account-select {
   background-color: var(--color-background);
 }
 
+.file-upload-area.dragging {
+  border-color: var(--color-primary);
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
 .file-upload-icon {
   color: var(--color-text-muted);
   margin-bottom: var(--space-3);
