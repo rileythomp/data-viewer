@@ -9,11 +9,15 @@ import (
 )
 
 type AccountGroupRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	settingsRepo *SettingsRepository
 }
 
 func NewAccountGroupRepository(db *sql.DB) *AccountGroupRepository {
-	return &AccountGroupRepository{db: db}
+	return &AccountGroupRepository{
+		db:           db,
+		settingsRepo: NewSettingsRepository(db),
+	}
 }
 
 func (r *AccountGroupRepository) GetAll() ([]models.AccountGroup, error) {
@@ -464,22 +468,60 @@ func (r *AccountGroupRepository) GetGroupedList() (*models.GroupedAccountsRespon
 		}
 	}
 
-	// Build final list and calculate total
+	// Build final list
 	var finalItems []models.ListItem
-	var totalBalance float64
 	for _, pi := range items {
 		finalItems = append(finalItems, pi.item)
-		if pi.item.Type == "group" && pi.item.Group != nil {
-			totalBalance += pi.item.Group.TotalBalance
-		} else if pi.item.Type == "account" && pi.item.Account != nil {
-			totalBalance += pi.item.Account.CurrentBalance
+	}
+
+	// Get total formula config
+	totalFormulaConfig, err := r.settingsRepo.GetTotalFormula()
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate total balance
+	var totalBalance float64
+	if totalFormulaConfig.IsEnabled && len(totalFormulaConfig.Formula) > 0 {
+		// Use custom formula
+		totalBalance = r.calculateFormulaTotal(totalFormulaConfig.Formula, accountMap, groupsWithAccounts)
+	} else {
+		// Default: sum all groups and ungrouped accounts
+		for _, pi := range items {
+			if pi.item.Type == "group" && pi.item.Group != nil {
+				totalBalance += pi.item.Group.TotalBalance
+			} else if pi.item.Type == "account" && pi.item.Account != nil {
+				totalBalance += pi.item.Account.CurrentBalance
+			}
 		}
 	}
 
 	return &models.GroupedAccountsResponse{
-		Items:        finalItems,
-		TotalBalance: totalBalance,
+		Items:              finalItems,
+		TotalBalance:       totalBalance,
+		TotalFormulaConfig: totalFormulaConfig,
 	}, nil
+}
+
+// calculateFormulaTotal calculates the total balance using the custom formula
+func (r *AccountGroupRepository) calculateFormulaTotal(
+	formula []models.TotalFormulaItem,
+	accountMap map[int]*models.Account,
+	groupsWithAccounts map[int]*models.AccountGroupWithAccounts,
+) float64 {
+	var total float64
+	for _, item := range formula {
+		if item.Type == "account" {
+			if acc, ok := accountMap[item.ID]; ok {
+				total += item.Coefficient * acc.CurrentBalance
+			}
+		} else if item.Type == "group" {
+			if group, ok := groupsWithAccounts[item.ID]; ok {
+				total += item.Coefficient * group.TotalBalance
+			}
+		}
+	}
+	return total
 }
 
 func (r *AccountGroupRepository) GetAllIncludingArchived() ([]models.AccountGroup, error) {

@@ -19,6 +19,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Settings } from 'lucide-react';
 import { listApi, accountsApi, groupsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import GroupCard from './GroupCard';
@@ -26,6 +27,8 @@ import AccountForm from './AccountForm';
 import GroupForm from './GroupForm';
 import EditAccountModal from './EditAccountModal';
 import HistoryTable from './HistoryTable';
+import SettingsModal from './SettingsModal';
+import TotalFormulaDisplay from './TotalFormulaDisplay';
 
 function SortableItem({ item, children }) {
   const id = item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`;
@@ -79,6 +82,7 @@ export default function AccountList() {
   const [editingAccount, setEditingAccount] = useState(null);
   const [editingGroup, setEditingGroup] = useState(null);
   const [viewingHistory, setViewingHistory] = useState(null);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   const [activeId, setActiveId] = useState(null);
   const [activeItem, setActiveItem] = useState(null);
@@ -786,7 +790,29 @@ export default function AccountList() {
   return (
     <div className="app">
       <div className="header">
-        <p className="total-balance">Total: {formatCurrency(listData.total_balance)}</p>
+        <div className="total-section">
+          <div className="total-header">
+            <p className="total-balance">Total: {formatCurrency(listData.total_balance)}</p>
+            <button
+              className="btn-icon-small settings-button"
+              onClick={() => setShowSettingsModal(true)}
+              aria-label="Total formula settings"
+            >
+              <Settings size={18} />
+            </button>
+          </div>
+          {listData.total_formula_config?.is_enabled && listData.total_formula_config?.formula?.length > 0 && (
+            <TotalFormulaDisplay
+              formulaItems={listData.total_formula_config.formula}
+              accounts={allAccounts}
+              groups={groups.map(g => {
+                const groupItem = listData.items.find(i => i.type === 'group' && i.group.id === g.id);
+                return { ...g, total_balance: groupItem?.group?.total_balance || 0 };
+              })}
+              totalBalance={listData.total_balance}
+            />
+          )}
+        </div>
         <div className="header-actions">
           <button
             onClick={() => {
@@ -909,6 +935,19 @@ export default function AccountList() {
           accountId={viewingHistory.id}
           accountName={viewingHistory.account_name}
           onClose={() => setViewingHistory(null)}
+        />
+      )}
+
+      {showSettingsModal && (
+        <SettingsModal
+          accounts={allAccounts}
+          groups={groups.map(g => {
+            const groupItem = listData.items.find(i => i.type === 'group' && i.group.id === g.id);
+            return { ...g, total_balance: groupItem?.group?.total_balance || 0 };
+          })}
+          totalFormulaConfig={listData.total_formula_config}
+          onSave={() => fetchData()}
+          onClose={() => setShowSettingsModal(false)}
         />
       )}
     </div>
