@@ -2008,3 +2008,128 @@ select.account-select {
     height: 300px;
   }
 }
+
+/* Inline Editable Text */
+.inline-editable-text {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.inline-editable-text input,
+.inline-editable-text textarea {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  font-size: inherit;
+  font-family: inherit;
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+  transition: all var(--transition-fast);
+}
+
+.inline-editable-text input:focus,
+.inline-editable-text textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.inline-editable-text textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.inline-edit-saving {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.inline-edit-error {
+  color: var(--color-danger);
+  font-size: 0.8125rem;
+  margin-top: var(--space-1);
+}
+
+.inline-edit-error-input {
+  border-color: var(--color-danger) !important;
+}
+
+.inline-edit-error-input:focus {
+  box-shadow: 0 0 0 3px var(--color-danger-light) !important;
+}
+
+/* Detail title input */
+.detail-title-input {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0 0 var(--space-6) 0;
+}
+
+/* Detail info textarea */
+.detail-info-textarea {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+/* Active edit mode button */
+.btn-icon-active {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.btn-icon-active:hover {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+/* Inline Color Picker */
+.inline-color-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.color-picker-trigger {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.color-picker-trigger:hover {
+  transform: scale(1.1);
+  border-color: var(--color-text-muted);
+}
+
+.color-picker-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+}
+
+/* Detail formula section for inline editing */
+.detail-formula-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.detail-formula-section .toggle-row {
+  margin-bottom: var(--space-4);
+}
+
+.detail-formula-section .formula-section {
+  margin-bottom: 0;
+}

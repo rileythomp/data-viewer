@@ -9,6 +9,7 @@ export default function FormulaDisplay({
   totalBalance,
   editable = false,
   onChange,
+  onBlur,
   currentAccountId = null,
   allAccounts = null,
 }) {
@@ -92,6 +93,10 @@ export default function FormulaDisplay({
     }];
     onChange(newItems);
     setCoefficient('1');
+    // Trigger save after adding, passing the new items directly
+    if (onBlur) {
+      onBlur(newItems);
+    }
   };
 
   const handleRemoveFormulaItem = (accountId) => {
@@ -101,6 +106,11 @@ export default function FormulaDisplay({
       return normalized.accountId !== accountId;
     });
     onChange(newItems);
+    // Trigger save after removing, passing the new items directly
+    // since state won't be updated yet
+    if (onBlur) {
+      onBlur(newItems);
+    }
   };
 
   const displayBalance = editable ? calculateBalance() : totalBalance;
@@ -169,6 +179,7 @@ export default function FormulaDisplay({
             step="any"
             value={coefficient}
             onChange={(e) => setCoefficient(e.target.value)}
+            onBlur={onBlur}
             placeholder="Coefficient"
             className="formula-coefficient-input"
           />
@@ -176,6 +187,7 @@ export default function FormulaDisplay({
           <select
             value=""
             onChange={(e) => handleAddFormulaItem(e.target.value)}
+            onBlur={onBlur}
             className="formula-account-select"
           >
             <option value="">Select account...</option>
