@@ -184,40 +184,36 @@ export default function AccountDetail() {
         <div className="detail-main">
           <h1 className="detail-title">{account.account_name}</h1>
 
-          <div className="detail-balance-section">
-            <span className="detail-balance-label">Current Balance</span>
-            {account.is_calculated ? (
-              <p className="detail-balance" title="Calculated balance">
-                {formatCurrency(account.current_balance)}
-              </p>
-            ) : isEditingBalance ? (
-              <input
-                ref={inputRef}
-                type="number"
-                step="0.01"
-                value={balanceValue}
-                onChange={(e) => setBalanceValue(e.target.value)}
-                onKeyDown={handleBalanceKeyDown}
-                onBlur={handleBalanceSubmit}
-                className="balance-input balance-input-large"
-              />
-            ) : (
-              <p
-                className="detail-balance account-balance-clickable"
-                onClick={handleBalanceClick}
-                title="Click to edit balance"
-              >
-                {formatCurrency(account.current_balance)}
-              </p>
-            )}
-          </div>
-
-          {account.is_calculated && account.formula && account.formula.length > 0 && (
+          {account.is_calculated && account.formula && account.formula.length > 0 ? (
             <FormulaDisplay
               formulaItems={account.formula}
               accounts={allAccounts}
               totalBalance={account.current_balance}
             />
+          ) : (
+            <div className="detail-balance-section">
+              <span className="detail-balance-label">Current Balance</span>
+              {isEditingBalance ? (
+                <input
+                  ref={inputRef}
+                  type="number"
+                  step="0.01"
+                  value={balanceValue}
+                  onChange={(e) => setBalanceValue(e.target.value)}
+                  onKeyDown={handleBalanceKeyDown}
+                  onBlur={handleBalanceSubmit}
+                  className="balance-input balance-input-large"
+                />
+              ) : (
+                <p
+                  className="detail-balance account-balance-clickable"
+                  onClick={handleBalanceClick}
+                  title="Click to edit balance"
+                >
+                  {formatCurrency(account.current_balance)}
+                </p>
+              )}
+            </div>
           )}
 
           <div className="detail-group-section">

@@ -153,7 +153,7 @@ func (r *AccountGroupRepository) Create(req *models.CreateGroupRequest) (*models
 		color = "#3b82f6"
 	}
 
-	var formulaJSON []byte
+	var formulaJSON interface{}
 	if req.IsCalculated && len(req.Formula) > 0 {
 		formulaJSON, err = json.Marshal(req.Formula)
 		if err != nil {
@@ -185,7 +185,7 @@ func (r *AccountGroupRepository) Create(req *models.CreateGroupRequest) (*models
 }
 
 func (r *AccountGroupRepository) Update(id int, req *models.UpdateGroupRequest) (*models.AccountGroup, error) {
-	var formulaJSON []byte
+	var formulaJSON interface{}
 	var err error
 	if req.IsCalculated && len(req.Formula) > 0 {
 		formulaJSON, err = json.Marshal(req.Formula)

@@ -86,7 +86,6 @@ export default function AccountCard({ account, onUpdateBalance, onViewHistory, o
               title={account.is_calculated ? 'Calculated balance' : 'Click to edit balance'}
             >
               {formatCurrency(account.current_balance)}
-              {account.is_calculated && <span className="calculated-badge">calc</span>}
             </p>
           )}
           <div className="account-actions-icons">

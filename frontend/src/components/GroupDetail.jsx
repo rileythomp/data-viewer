@@ -236,24 +236,24 @@ export default function GroupDetail() {
             <h1 className="detail-title">{group.group_name}</h1>
           </div>
 
-          <div className="detail-balance-section">
-            <span className="detail-balance-label">Total Balance</span>
-            <p className="detail-balance">{formatCurrency(group.total_balance)}</p>
-          </div>
+          {group.is_calculated && group.formula && group.formula.length > 0 ? (
+            <FormulaDisplay
+              formulaItems={group.formula}
+              accounts={group.accounts || []}
+              totalBalance={group.total_balance}
+            />
+          ) : (
+            <div className="detail-balance-section">
+              <span className="detail-balance-label">Total Balance</span>
+              <p className="detail-balance">{formatCurrency(group.total_balance)}</p>
+            </div>
+          )}
 
           {group.group_description && (
             <div className="detail-info-section">
               <span className="detail-info-label">Description</span>
               <p className="detail-info-text">{group.group_description}</p>
             </div>
-          )}
-
-          {group.is_calculated && group.formula && group.formula.length > 0 && (
-            <FormulaDisplay
-              formulaItems={group.formula}
-              accounts={group.accounts || []}
-              totalBalance={group.total_balance}
-            />
           )}
         </div>
 

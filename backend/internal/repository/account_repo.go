@@ -94,7 +94,7 @@ func (r *AccountRepository) Create(req *models.CreateAccountRequest) (*models.Ac
 	}
 
 	// Marshal formula if calculated
-	var formulaJSON []byte
+	var formulaJSON interface{}
 	if req.IsCalculated && len(req.Formula) > 0 {
 		formulaJSON, err = json.Marshal(req.Formula)
 		if err != nil {
@@ -420,7 +420,7 @@ func (r *AccountRepository) UpdatePositions(positions []models.AccountPosition) 
 }
 
 func (r *AccountRepository) UpdateFormula(id int, isCalculated bool, formula []models.FormulaItem) (*models.Account, error) {
-	var formulaJSON []byte
+	var formulaJSON interface{}
 	var err error
 	if isCalculated && len(formula) > 0 {
 		formulaJSON, err = json.Marshal(formula)
