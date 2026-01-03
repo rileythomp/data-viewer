@@ -1,11 +1,57 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil, Archive } from 'lucide-react';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { groupsApi, accountsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import EditAccountModal from './EditAccountModal';
 import HistoryTable from './HistoryTable';
 import GroupForm from './GroupForm';
+
+function SortableAccountItem({ account, onUpdateBalance, onViewHistory, onRemoveFromGroup }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `account-${account.id}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    cursor: 'grab',
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <AccountCard
+        account={account}
+        onUpdateBalance={onUpdateBalance}
+        onViewHistory={onViewHistory}
+        onRemoveFromGroup={onRemoveFromGroup}
+      />
+    </div>
+  );
+}
 
 export default function GroupDetail() {
   const { id } = useParams();
@@ -16,6 +62,18 @@ export default function GroupDetail() {
   const [isEditing, setIsEditing] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [viewingHistory, setViewingHistory] = useState(null);
+  const [activeId, setActiveId] = useState(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const fetchGroup = async () => {
     try {
@@ -70,6 +128,58 @@ export default function GroupDetail() {
       await accountsApi.setGroup(account.id, null);
       await fetchGroup();
     }
+  };
+
+  const handleDragStart = useCallback((event) => {
+    setActiveId(event.active.id);
+  }, []);
+
+  const handleDragEnd = useCallback(async (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    // Reorder accounts within the group
+    const accounts = group.accounts || [];
+    const oldIndex = accounts.findIndex((a) => `account-${a.id}` === active.id);
+    const newIndex = accounts.findIndex((a) => `account-${a.id}` === over.id);
+
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const reorderedAccounts = arrayMove(accounts, oldIndex, newIndex);
+
+      // Optimistically update the UI
+      setGroup((prev) => ({
+        ...prev,
+        accounts: reorderedAccounts,
+      }));
+
+      // Send the new positions to the backend
+      const positions = reorderedAccounts.map((account, index) => ({
+        id: account.id,
+        position_in_group: index,
+      }));
+
+      try {
+        await groupsApi.updateAccountPositionsInGroup(id, positions);
+      } catch (err) {
+        console.error('Failed to update account positions:', err);
+        // Revert on error
+        await fetchGroup();
+      }
+    }
+  }, [group, id, fetchGroup]);
+
+  const handleDragCancel = useCallback(() => {
+    setActiveId(null);
+  }, []);
+
+  const getActiveAccount = () => {
+    if (!activeId || !group?.accounts) return null;
+    const accountId = activeId.replace('account-', '');
+    return group.accounts.find((a) => a.id.toString() === accountId);
   };
 
   if (loading) {
@@ -145,17 +255,44 @@ export default function GroupDetail() {
           {!group.accounts || group.accounts.length === 0 ? (
             <p className="empty-state-small">No accounts in this group yet.</p>
           ) : (
-            <div className="group-accounts-list">
-              {group.accounts.map((account) => (
-                <AccountCard
-                  key={account.id}
-                  account={account}
-                  onUpdateBalance={handleUpdateBalance}
-                  onViewHistory={setViewingHistory}
-                  onRemoveFromGroup={handleRemoveFromGroup}
-                />
-              ))}
-            </div>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <SortableContext
+                items={group.accounts.map((a) => `account-${a.id}`)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="group-accounts-list">
+                  {group.accounts.map((account) => (
+                    <SortableAccountItem
+                      key={account.id}
+                      account={account}
+                      onUpdateBalance={handleUpdateBalance}
+                      onViewHistory={setViewingHistory}
+                      onRemoveFromGroup={handleRemoveFromGroup}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+              <DragOverlay>
+                {activeId ? (
+                  <div className="account-card account-card-compact account-card-dragging">
+                    <div className="account-header-compact">
+                      <h3 className="account-name">{getActiveAccount()?.account_name}</h3>
+                      <div className="account-right">
+                        <p className="account-balance account-balance-compact">
+                          {formatCurrency(getActiveAccount()?.current_balance || 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           )}
         </div>
       </div>

@@ -22,7 +22,8 @@ export default function AccountCard({ account, onUpdateBalance, onViewHistory, o
     }
   }, [isEditingBalance]);
 
-  const handleBalanceClick = () => {
+  const handleBalanceClick = (e) => {
+    e.stopPropagation(); // Prevent card click from navigating
     if (account.is_calculated) return; // Can't edit calculated account balance
     setBalanceValue(account.current_balance.toString());
     setIsEditingBalance(true);
@@ -63,10 +64,31 @@ export default function AccountCard({ account, onUpdateBalance, onViewHistory, o
   };
 
   return (
-    <div className="account-card account-card-clickable" onClick={handleCardClick}>
-      <div className="account-header">
-        <div className="account-header-top">
-          <h3 className="account-name">{account.account_name}</h3>
+    <div className="account-card account-card-compact account-card-clickable" onClick={handleCardClick}>
+      <div className="account-header-compact">
+        <h3 className="account-name">{account.account_name}</h3>
+        <div className="account-right">
+          {isEditingBalance ? (
+            <input
+              ref={inputRef}
+              type="number"
+              step="0.01"
+              value={balanceValue}
+              onChange={(e) => setBalanceValue(e.target.value)}
+              onKeyDown={handleBalanceKeyDown}
+              onBlur={handleBalanceBlur}
+              className="balance-input balance-input-compact"
+            />
+          ) : (
+            <p
+              className={`account-balance account-balance-compact ${!account.is_calculated ? 'account-balance-clickable' : ''}`}
+              onClick={handleBalanceClick}
+              title={account.is_calculated ? 'Calculated balance' : 'Click to edit balance'}
+            >
+              {formatCurrency(account.current_balance)}
+              {account.is_calculated && <span className="calculated-badge">calc</span>}
+            </p>
+          )}
           <div className="account-actions-icons">
             <button
               onClick={() => onViewHistory(account)}
@@ -97,29 +119,6 @@ export default function AccountCard({ account, onUpdateBalance, onViewHistory, o
               </button>
             )}
           </div>
-        </div>
-        <div className="account-balance-row">
-          {isEditingBalance ? (
-            <input
-              ref={inputRef}
-              type="number"
-              step="0.01"
-              value={balanceValue}
-              onChange={(e) => setBalanceValue(e.target.value)}
-              onKeyDown={handleBalanceKeyDown}
-              onBlur={handleBalanceBlur}
-              className="balance-input"
-            />
-          ) : (
-            <p
-              className={`account-balance ${!account.is_calculated ? 'account-balance-clickable' : ''}`}
-              onClick={handleBalanceClick}
-              title={account.is_calculated ? 'Calculated balance' : 'Click to edit balance'}
-            >
-              {formatCurrency(account.current_balance)}
-              {account.is_calculated && <span className="calculated-badge">calc</span>}
-            </p>
-          )}
         </div>
       </div>
     </div>

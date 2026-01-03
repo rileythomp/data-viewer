@@ -41,7 +41,7 @@ function SortableItem({ item, children }) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0 : 1,
     zIndex: isDragging ? 1000 : 'auto',
   };
 
@@ -151,7 +151,7 @@ export default function AccountList() {
     return closestCenter(args);
   }, [findAccountGroup]);
 
-  const fetchData = async () => {
+  const fetchData = async (isInitialLoad = false) => {
     try {
       setError('');
       const [listResponse, groupsResponse] = await Promise.all([
@@ -160,6 +160,14 @@ export default function AccountList() {
       ]);
       setListData(listResponse);
       setGroups(groupsResponse);
+
+      // On initial load, expand all groups by default
+      if (isInitialLoad) {
+        const allGroupIds = listResponse.items
+          .filter((item) => item.type === 'group')
+          .map((item) => item.group.id);
+        setExpandedGroups(new Set(allGroupIds));
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -168,7 +176,7 @@ export default function AccountList() {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(true);
   }, []);
 
   const handleToggleExpand = (groupId) => {
@@ -236,12 +244,14 @@ export default function AccountList() {
       const activeAccountId = parseInt(activeIdStr.replace('account-', ''), 10);
       const overAccountId = parseInt(overIdStr.replace('account-', ''), 10);
 
-      const activeGroup = findAccountGroup(activeAccountId);
+      // Use dragSourceGroupId (set at drag start) to determine the real source group,
+      // since findAccountGroup uses the current UI state which may have been modified during drag preview
       const overGroup = findAccountGroup(overAccountId);
 
       // Both accounts are in the same group - update UI in real-time
-      if (activeGroup && overGroup && activeGroup.id === overGroup.id) {
-        const group = activeGroup;
+      // Use dragSourceGroupId to check if we're actually in the same group (not just visually)
+      if (dragSourceGroupId !== null && overGroup && dragSourceGroupId === overGroup.id) {
+        const group = overGroup;
         const accounts = group.accounts;
         const activeIndex = accounts.findIndex((a) => a.id === activeAccountId);
         const overIndex = accounts.findIndex((a) => a.id === overAccountId);
@@ -266,8 +276,9 @@ export default function AccountList() {
             }),
           }));
         }
-      } else if (overGroup && (!activeGroup || activeGroup.id !== overGroup.id)) {
+      } else if (overGroup && (dragSourceGroupId === null || dragSourceGroupId !== overGroup.id)) {
         // Cross-group drag: account is being dragged over an account in a different group
+        // dragSourceGroupId === null means ungrouped account, !== overGroup.id means different group
         // Find position in the target group, excluding the dragged item if it's already there (from preview)
         const accountsWithoutDragged = overGroup.accounts.filter((a) => a.id !== activeAccountId);
         const overIndexInFiltered = accountsWithoutDragged.findIndex((a) => a.id === overAccountId);
@@ -641,9 +652,9 @@ export default function AccountList() {
               <div className="drag-overlay">
                 <AccountCard
                   account={activeItem.data}
-                  onEdit={() => {}}
-                  onUpdateBalance={() => {}}
-                  onViewHistory={() => {}}
+                  onEdit={() => { }}
+                  onUpdateBalance={() => { }}
+                  onViewHistory={() => { }}
                 />
               </div>
             )}
