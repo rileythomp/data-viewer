@@ -1916,6 +1916,10 @@ select.account-select {
   max-width: 520px;
 }
 
+.settings-modal h3 {
+  margin-bottom: var(--space-4);
+}
+
 .settings-modal .formula-section {
   padding: var(--space-4);
 }
