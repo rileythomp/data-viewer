@@ -187,4 +187,14 @@ export const accountsApi = {
     if (!res.ok) throw new Error('Failed to set account group');
     return res.json();
   },
+
+  updateFormula: async (id, isCalculated, formula) => {
+    const res = await fetch(`${API_BASE}/accounts/${id}/formula`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_calculated: isCalculated, formula }),
+    });
+    if (!res.ok) throw new Error('Failed to update formula');
+    return res.json();
+  },
 };

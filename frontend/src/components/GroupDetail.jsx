@@ -23,6 +23,7 @@ import AccountCard from './AccountCard';
 import EditAccountModal from './EditAccountModal';
 import HistoryTable from './HistoryTable';
 import GroupForm from './GroupForm';
+import FormulaDisplay from './FormulaDisplay';
 
 function SortableAccountItem({ account, onUpdateBalance, onViewHistory, onRemoveFromGroup }) {
   const {
@@ -245,6 +246,14 @@ export default function GroupDetail() {
               <span className="detail-info-label">Description</span>
               <p className="detail-info-text">{group.group_description}</p>
             </div>
+          )}
+
+          {group.is_calculated && group.formula && group.formula.length > 0 && (
+            <FormulaDisplay
+              formulaItems={group.formula}
+              accounts={group.accounts || []}
+              totalBalance={group.total_balance}
+            />
           )}
         </div>
 

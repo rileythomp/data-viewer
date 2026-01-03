@@ -38,6 +38,7 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/accounts/{id}/archive", accountHandler.Archive).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}/history", accountHandler.GetHistory).Methods("GET")
 	api.HandleFunc("/accounts/{id}/group", accountHandler.SetGroup).Methods("PATCH")
+	api.HandleFunc("/accounts/{id}/formula", accountHandler.UpdateFormula).Methods("PATCH")
 
 	// Group routes
 	api.HandleFunc("/groups", groupHandler.GetAll).Methods("GET")

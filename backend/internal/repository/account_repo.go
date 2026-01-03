@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"finance-tracker/internal/models"
@@ -17,7 +18,7 @@ func NewAccountRepository(db *sql.DB) *AccountRepository {
 
 func (r *AccountRepository) GetAll() ([]models.Account, error) {
 	query := `
-		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 		FROM account_balances
 		WHERE is_archived = false
 		ORDER BY position ASC, account_name ASC
@@ -32,12 +33,16 @@ func (r *AccountRepository) GetAll() ([]models.Account, error) {
 	for rows.Next() {
 		var a models.Account
 		var groupID sql.NullInt64
-		if err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		var formulaJSON []byte
+		if err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan account: %w", err)
 		}
 		if groupID.Valid {
 			gid := int(groupID.Int64)
 			a.GroupID = &gid
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &a.Formula)
 		}
 		accounts = append(accounts, a)
 	}
@@ -46,13 +51,14 @@ func (r *AccountRepository) GetAll() ([]models.Account, error) {
 
 func (r *AccountRepository) GetByID(id int) (*models.Account, error) {
 	query := `
-		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 		FROM account_balances
 		WHERE id = $1
 	`
 	var a models.Account
 	var groupID sql.NullInt64
-	err := r.db.QueryRow(query, id).Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt)
+	var formulaJSON []byte
+	err := r.db.QueryRow(query, id).Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -62,6 +68,9 @@ func (r *AccountRepository) GetByID(id int) (*models.Account, error) {
 	if groupID.Valid {
 		gid := int(groupID.Int64)
 		a.GroupID = &gid
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &a.Formula)
 	}
 	return &a, nil
 }
@@ -84,20 +93,33 @@ func (r *AccountRepository) Create(req *models.CreateAccountRequest) (*models.Ac
 		newPosition = int(maxPosition.Int64) + 1
 	}
 
+	// Marshal formula if calculated
+	var formulaJSON []byte
+	if req.IsCalculated && len(req.Formula) > 0 {
+		formulaJSON, err = json.Marshal(req.Formula)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal formula: %w", err)
+		}
+	}
+
 	// Insert the account
 	query := `
-		INSERT INTO account_balances (account_name, account_info, current_balance, position)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		INSERT INTO account_balances (account_name, account_info, current_balance, position, is_calculated, formula)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 	`
 	var a models.Account
 	var groupID sql.NullInt64
-	err = tx.QueryRow(query, req.AccountName, req.AccountInfo, req.CurrentBalance, newPosition).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+	var returnedFormula []byte
+	err = tx.QueryRow(query, req.AccountName, req.AccountInfo, req.CurrentBalance, newPosition, req.IsCalculated, formulaJSON).Scan(
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &returnedFormula, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if groupID.Valid {
 		gid := int(groupID.Int64)
 		a.GroupID = &gid
+	}
+	if len(returnedFormula) > 0 {
+		json.Unmarshal(returnedFormula, &a.Formula)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create account: %w", err)
@@ -125,12 +147,13 @@ func (r *AccountRepository) UpdateName(id int, name string) (*models.Account, er
 		UPDATE account_balances
 		SET account_name = $1, updated_at = NOW()
 		WHERE id = $2
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 	`
 	var a models.Account
 	var groupID sql.NullInt64
+	var formulaJSON []byte
 	err := r.db.QueryRow(query, name, id).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -141,6 +164,9 @@ func (r *AccountRepository) UpdateName(id int, name string) (*models.Account, er
 	if groupID.Valid {
 		gid := int(groupID.Int64)
 		a.GroupID = &gid
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &a.Formula)
 	}
 	return &a, nil
 }
@@ -167,16 +193,20 @@ func (r *AccountRepository) UpdateBalance(id int, balance float64) (*models.Acco
 		UPDATE account_balances
 		SET current_balance = $1, updated_at = NOW()
 		WHERE id = $2
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 	`
 	var a models.Account
 	var groupID sql.NullInt64
+	var formulaJSON []byte
 	err = tx.QueryRow(updateQuery, balance, id).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if groupID.Valid {
 		gid := int(groupID.Int64)
 		a.GroupID = &gid
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &a.Formula)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to update balance: %w", err)
@@ -204,12 +234,13 @@ func (r *AccountRepository) Archive(id int) (*models.Account, error) {
 		UPDATE account_balances
 		SET is_archived = true, updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 	`
 	var a models.Account
 	var groupID sql.NullInt64
+	var formulaJSON []byte
 	err := r.db.QueryRow(query, id).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -221,6 +252,9 @@ func (r *AccountRepository) Archive(id int) (*models.Account, error) {
 		gid := int(groupID.Int64)
 		a.GroupID = &gid
 	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &a.Formula)
+	}
 	return &a, nil
 }
 
@@ -229,12 +263,13 @@ func (r *AccountRepository) UpdateInfo(id int, info string) (*models.Account, er
 		UPDATE account_balances
 		SET account_info = $1, updated_at = NOW()
 		WHERE id = $2
-		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 	`
 	var a models.Account
 	var groupID sql.NullInt64
+	var formulaJSON []byte
 	err := r.db.QueryRow(query, info, id).Scan(
-		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -246,22 +281,26 @@ func (r *AccountRepository) UpdateInfo(id int, info string) (*models.Account, er
 		gid := int(groupID.Int64)
 		a.GroupID = &gid
 	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &a.Formula)
+	}
 	return &a, nil
 }
 
 func (r *AccountRepository) SetGroup(id int, groupID *int, positionInGroup *int) (*models.Account, error) {
 	var a models.Account
 	var gid sql.NullInt64
+	var formulaJSON []byte
 
 	if groupID == nil {
 		query := `
 			UPDATE account_balances
 			SET group_id = NULL, position_in_group = 0, updated_at = NOW()
 			WHERE id = $1
-			RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+			RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 		`
 		err := r.db.QueryRow(query, id).Scan(
-			&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &gid, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+			&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &gid, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt,
 		)
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -307,10 +346,10 @@ func (r *AccountRepository) SetGroup(id int, groupID *int, positionInGroup *int)
 			UPDATE account_balances
 			SET group_id = $1, position_in_group = $2, updated_at = NOW()
 			WHERE id = $3
-			RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+			RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 		`
 		err = tx.QueryRow(query, *groupID, newPos, id).Scan(
-			&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &gid, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt,
+			&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &gid, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt,
 		)
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -327,6 +366,9 @@ func (r *AccountRepository) SetGroup(id int, groupID *int, positionInGroup *int)
 	if gid.Valid {
 		g := int(gid.Int64)
 		a.GroupID = &g
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &a.Formula)
 	}
 	return &a, nil
 }
@@ -375,4 +417,42 @@ func (r *AccountRepository) UpdatePositions(positions []models.AccountPosition) 
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
+}
+
+func (r *AccountRepository) UpdateFormula(id int, isCalculated bool, formula []models.FormulaItem) (*models.Account, error) {
+	var formulaJSON []byte
+	var err error
+	if isCalculated && len(formula) > 0 {
+		formulaJSON, err = json.Marshal(formula)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal formula: %w", err)
+		}
+	}
+
+	query := `
+		UPDATE account_balances
+		SET is_calculated = $1, formula = $2, updated_at = NOW()
+		WHERE id = $3
+		RETURNING id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
+	`
+	var a models.Account
+	var groupID sql.NullInt64
+	var returnedFormula []byte
+	err = r.db.QueryRow(query, isCalculated, formulaJSON, id).Scan(
+		&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &returnedFormula, &a.CreatedAt, &a.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to update formula: %w", err)
+	}
+	if groupID.Valid {
+		gid := int(groupID.Int64)
+		a.GroupID = &gid
+	}
+	if len(returnedFormula) > 0 {
+		json.Unmarshal(returnedFormula, &a.Formula)
+	}
+	return &a, nil
 }

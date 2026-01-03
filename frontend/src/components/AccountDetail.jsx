@@ -4,6 +4,7 @@ import { ArrowLeft, Pencil, Archive, ExternalLink } from 'lucide-react';
 import { accountsApi, groupsApi } from '../services/api';
 import EditAccountModal from './EditAccountModal';
 import BalanceHistoryTable from './BalanceHistoryTable';
+import FormulaDisplay from './FormulaDisplay';
 
 export default function AccountDetail() {
   const { id } = useParams();
@@ -16,6 +17,7 @@ export default function AccountDetail() {
   const [isEditingBalance, setIsEditingBalance] = useState(false);
   const [balanceValue, setBalanceValue] = useState('');
   const [groups, setGroups] = useState([]);
+  const [allAccounts, setAllAccounts] = useState([]);
   const inputRef = useRef(null);
 
   const fetchAccount = async () => {
@@ -47,10 +49,19 @@ export default function AccountDetail() {
     }
   };
 
+  const fetchAllAccounts = async () => {
+    try {
+      const data = await accountsApi.getAll();
+      setAllAccounts(data || []);
+    } catch (err) {
+      // Accounts might not exist, that's okay
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      await Promise.all([fetchAccount(), fetchHistory(), fetchGroups()]);
+      await Promise.all([fetchAccount(), fetchHistory(), fetchGroups(), fetchAllAccounts()]);
       setLoading(false);
     };
     fetchData();
@@ -175,7 +186,11 @@ export default function AccountDetail() {
 
           <div className="detail-balance-section">
             <span className="detail-balance-label">Current Balance</span>
-            {isEditingBalance ? (
+            {account.is_calculated ? (
+              <p className="detail-balance" title="Calculated balance">
+                {formatCurrency(account.current_balance)}
+              </p>
+            ) : isEditingBalance ? (
               <input
                 ref={inputRef}
                 type="number"
@@ -196,6 +211,14 @@ export default function AccountDetail() {
               </p>
             )}
           </div>
+
+          {account.is_calculated && account.formula && account.formula.length > 0 && (
+            <FormulaDisplay
+              formulaItems={account.formula}
+              accounts={allAccounts}
+              totalBalance={account.current_balance}
+            />
+          )}
 
           <div className="detail-group-section">
             <span className="detail-group-label">Group</span>

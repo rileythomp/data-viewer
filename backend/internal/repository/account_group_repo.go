@@ -69,7 +69,7 @@ func (r *AccountGroupRepository) GetWithAccounts(id int) (*models.AccountGroupWi
 	}
 
 	query := `
-		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 		FROM account_balances
 		WHERE group_id = $1 AND is_archived = false
 		ORDER BY position_in_group ASC, account_name ASC
@@ -84,13 +84,17 @@ func (r *AccountGroupRepository) GetWithAccounts(id int) (*models.AccountGroupWi
 	for rows.Next() {
 		var a models.Account
 		var groupID sql.NullInt64
-		err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt)
+		var formulaJSON []byte
+		err := rows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		if groupID.Valid {
 			gid := int(groupID.Int64)
 			a.GroupID = &gid
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &a.Formula)
 		}
 		accounts = append(accounts, a)
 	}
@@ -281,7 +285,7 @@ func (r *AccountGroupRepository) GetGroupedList() (*models.GroupedAccountsRespon
 
 	// Get all non-archived, ungrouped accounts
 	ungroupedQuery := `
-		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, created_at, updated_at
+		SELECT id, account_name, account_info, current_balance, is_archived, position, group_id, position_in_group, is_calculated, formula, created_at, updated_at
 		FROM account_balances
 		WHERE group_id IS NULL AND is_archived = false
 		ORDER BY position ASC, account_name ASC
@@ -296,9 +300,13 @@ func (r *AccountGroupRepository) GetGroupedList() (*models.GroupedAccountsRespon
 	for ungroupedRows.Next() {
 		var a models.Account
 		var groupID sql.NullInt64
-		err := ungroupedRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.CreatedAt, &a.UpdatedAt)
+		var formulaJSON []byte
+		err := ungroupedRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &groupID, &a.PositionInGroup, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
 		if err != nil {
 			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &a.Formula)
 		}
 		ungroupedAccounts = append(ungroupedAccounts, a)
 	}
