@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Settings, LayoutDashboard, PieChart } from 'lucide-react';
+import { Settings, LayoutDashboard, PieChart, Upload } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 export default function NavBar() {
@@ -9,6 +9,9 @@ export default function NavBar() {
         Finance Tracker
       </Link>
       <div className="navbar-actions">
+        <Link to="/uploads" className="btn-icon" title="Uploads">
+          <Upload size={18} />
+        </Link>
         <Link to="/dashboards" className="btn-icon" title="Dashboards">
           <LayoutDashboard size={18} />
         </Link>
