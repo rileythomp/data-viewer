@@ -21,21 +21,39 @@ export const groupsApi = {
     return res.json();
   },
 
-  create: async (groupName, groupDescription, color) => {
+  create: async (groupName, groupDescription, color, isCalculated = false, formula = null) => {
+    const payload = {
+      group_name: groupName,
+      group_description: groupDescription,
+      color,
+      is_calculated: isCalculated,
+    };
+    if (isCalculated && formula) {
+      payload.formula = formula;
+    }
     const res = await fetch(`${API_BASE}/groups`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_name: groupName, group_description: groupDescription, color }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Failed to create group');
     return res.json();
   },
 
-  update: async (id, groupName, groupDescription, color) => {
+  update: async (id, groupName, groupDescription, color, isCalculated = false, formula = null) => {
+    const payload = {
+      group_name: groupName,
+      group_description: groupDescription,
+      color,
+      is_calculated: isCalculated,
+    };
+    if (isCalculated && formula) {
+      payload.formula = formula;
+    }
     const res = await fetch(`${API_BASE}/groups/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_name: groupName, group_description: groupDescription, color }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Failed to update group');
     return res.json();

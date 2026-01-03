@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 
 	"finance-tracker/internal/models"
 )
@@ -16,7 +17,7 @@ func NewAccountGroupRepository(db *sql.DB) *AccountGroupRepository {
 
 func (r *AccountGroupRepository) GetAll() ([]models.AccountGroup, error) {
 	query := `
-		SELECT id, group_name, group_description, color, position, is_archived, created_at, updated_at
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
 		FROM account_groups
 		WHERE is_archived = false
 		ORDER BY position ASC, group_name ASC
@@ -30,9 +31,13 @@ func (r *AccountGroupRepository) GetAll() ([]models.AccountGroup, error) {
 	var groups []models.AccountGroup
 	for rows.Next() {
 		var g models.AccountGroup
-		err := rows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.CreatedAt, &g.UpdatedAt)
+		var formulaJSON []byte
+		err := rows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt)
 		if err != nil {
 			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &g.Formula)
 		}
 		groups = append(groups, g)
 	}
@@ -41,14 +46,18 @@ func (r *AccountGroupRepository) GetAll() ([]models.AccountGroup, error) {
 
 func (r *AccountGroupRepository) GetByID(id int) (*models.AccountGroup, error) {
 	query := `
-		SELECT id, group_name, group_description, color, position, is_archived, created_at, updated_at
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
 		FROM account_groups
 		WHERE id = $1
 	`
 	var g models.AccountGroup
-	err := r.db.QueryRow(query, id).Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.CreatedAt, &g.UpdatedAt)
+	var formulaJSON []byte
+	err := r.db.QueryRow(query, id).Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt)
 	if err != nil {
 		return nil, err
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &g.Formula)
 	}
 	return &g, nil
 }
@@ -72,7 +81,6 @@ func (r *AccountGroupRepository) GetWithAccounts(id int) (*models.AccountGroupWi
 	defer rows.Close()
 
 	var accounts []models.Account
-	var totalBalance float64
 	for rows.Next() {
 		var a models.Account
 		var groupID sql.NullInt64
@@ -84,11 +92,31 @@ func (r *AccountGroupRepository) GetWithAccounts(id int) (*models.AccountGroupWi
 			gid := int(groupID.Int64)
 			a.GroupID = &gid
 		}
-		totalBalance += a.CurrentBalance
 		accounts = append(accounts, a)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	// Calculate total balance
+	var totalBalance float64
+	if group.IsCalculated && len(group.Formula) > 0 {
+		// Build a map of account ID to balance for quick lookup
+		accountBalances := make(map[int]float64)
+		for _, a := range accounts {
+			accountBalances[a.ID] = a.CurrentBalance
+		}
+		// Calculate formula-based balance
+		for _, item := range group.Formula {
+			if balance, ok := accountBalances[item.AccountID]; ok {
+				totalBalance += item.Coefficient * balance
+			}
+		}
+	} else {
+		// Default: sum all account balances
+		for _, a := range accounts {
+			totalBalance += a.CurrentBalance
+		}
 	}
 
 	return &models.AccountGroupWithAccounts{
@@ -121,17 +149,29 @@ func (r *AccountGroupRepository) Create(req *models.CreateGroupRequest) (*models
 		color = "#3b82f6"
 	}
 
+	var formulaJSON []byte
+	if req.IsCalculated && len(req.Formula) > 0 {
+		formulaJSON, err = json.Marshal(req.Formula)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	query := `
-		INSERT INTO account_groups (group_name, group_description, color, position)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, group_name, group_description, color, position, is_archived, created_at, updated_at
+		INSERT INTO account_groups (group_name, group_description, color, position, is_calculated, formula)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
 	`
 	var g models.AccountGroup
-	err = tx.QueryRow(query, req.GroupName, req.GroupDescription, color, newPos).Scan(
-		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.CreatedAt, &g.UpdatedAt,
+	var returnedFormula []byte
+	err = tx.QueryRow(query, req.GroupName, req.GroupDescription, color, newPos, req.IsCalculated, formulaJSON).Scan(
+		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &returnedFormula, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if len(returnedFormula) > 0 {
+		json.Unmarshal(returnedFormula, &g.Formula)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -141,18 +181,31 @@ func (r *AccountGroupRepository) Create(req *models.CreateGroupRequest) (*models
 }
 
 func (r *AccountGroupRepository) Update(id int, req *models.UpdateGroupRequest) (*models.AccountGroup, error) {
+	var formulaJSON []byte
+	var err error
+	if req.IsCalculated && len(req.Formula) > 0 {
+		formulaJSON, err = json.Marshal(req.Formula)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	query := `
 		UPDATE account_groups
-		SET group_name = $1, group_description = $2, color = $3, updated_at = NOW()
-		WHERE id = $4
-		RETURNING id, group_name, group_description, color, position, is_archived, created_at, updated_at
+		SET group_name = $1, group_description = $2, color = $3, is_calculated = $4, formula = $5, updated_at = NOW()
+		WHERE id = $6
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
 	`
 	var g models.AccountGroup
-	err := r.db.QueryRow(query, req.GroupName, req.GroupDescription, req.Color, id).Scan(
-		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.CreatedAt, &g.UpdatedAt,
+	var returnedFormula []byte
+	err = r.db.QueryRow(query, req.GroupName, req.GroupDescription, req.Color, req.IsCalculated, formulaJSON, id).Scan(
+		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &returnedFormula, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if len(returnedFormula) > 0 {
+		json.Unmarshal(returnedFormula, &g.Formula)
 	}
 	return &g, nil
 }
@@ -162,14 +215,18 @@ func (r *AccountGroupRepository) Archive(id int) (*models.AccountGroup, error) {
 		UPDATE account_groups
 		SET is_archived = true, updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, group_name, group_description, color, position, is_archived, created_at, updated_at
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
 	`
 	var g models.AccountGroup
+	var formulaJSON []byte
 	err := r.db.QueryRow(query, id).Scan(
-		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.CreatedAt, &g.UpdatedAt,
+		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &g.Formula)
 	}
 	return &g, nil
 }

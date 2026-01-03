@@ -2,15 +2,22 @@ package models
 
 import "time"
 
+type FormulaItem struct {
+	AccountID   int     `json:"account_id"`
+	Coefficient float64 `json:"coefficient"`
+}
+
 type AccountGroup struct {
-	ID               int       `json:"id"`
-	GroupName        string    `json:"group_name"`
-	GroupDescription string    `json:"group_description"`
-	Color            string    `json:"color"`
-	Position         int       `json:"position"`
-	IsArchived       bool      `json:"is_archived"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               int           `json:"id"`
+	GroupName        string        `json:"group_name"`
+	GroupDescription string        `json:"group_description"`
+	Color            string        `json:"color"`
+	Position         int           `json:"position"`
+	IsArchived       bool          `json:"is_archived"`
+	IsCalculated     bool          `json:"is_calculated"`
+	Formula          []FormulaItem `json:"formula,omitempty"`
+	CreatedAt        time.Time     `json:"created_at"`
+	UpdatedAt        time.Time     `json:"updated_at"`
 }
 
 type AccountGroupWithAccounts struct {
@@ -20,15 +27,19 @@ type AccountGroupWithAccounts struct {
 }
 
 type CreateGroupRequest struct {
-	GroupName        string `json:"group_name"`
-	GroupDescription string `json:"group_description"`
-	Color            string `json:"color"`
+	GroupName        string        `json:"group_name"`
+	GroupDescription string        `json:"group_description"`
+	Color            string        `json:"color"`
+	IsCalculated     bool          `json:"is_calculated"`
+	Formula          []FormulaItem `json:"formula,omitempty"`
 }
 
 type UpdateGroupRequest struct {
-	GroupName        string `json:"group_name"`
-	GroupDescription string `json:"group_description"`
-	Color            string `json:"color"`
+	GroupName        string        `json:"group_name"`
+	GroupDescription string        `json:"group_description"`
+	Color            string        `json:"color"`
+	IsCalculated     bool          `json:"is_calculated"`
+	Formula          []FormulaItem `json:"formula,omitempty"`
 }
 
 type UpdateGroupPositionsRequest struct {

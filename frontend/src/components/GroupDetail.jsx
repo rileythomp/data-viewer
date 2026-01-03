@@ -98,8 +98,8 @@ export default function GroupDetail() {
     }).format(amount);
   };
 
-  const handleUpdateGroup = async (name, description, color) => {
-    await groupsApi.update(id, name, description, color);
+  const handleUpdateGroup = async (name, description, color, isCalculated, formula) => {
+    await groupsApi.update(id, name, description, color, isCalculated, formula);
     await fetchGroup();
     setIsEditing(false);
   };
@@ -302,6 +302,7 @@ export default function GroupDetail() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <GroupForm
               initialData={group}
+              accounts={group.accounts || []}
               onSubmit={handleUpdateGroup}
               onCancel={() => setIsEditing(false)}
             />

@@ -529,8 +529,8 @@ export default function AccountList() {
     setEditingAccount(null);
   };
 
-  const handleUpdateGroup = async (name, description, color) => {
-    await groupsApi.update(editingGroup.id, name, description, color);
+  const handleUpdateGroup = async (name, description, color, isCalculated, formula) => {
+    await groupsApi.update(editingGroup.id, name, description, color, isCalculated, formula);
     await fetchData();
     setEditingGroup(null);
   };
@@ -675,6 +675,7 @@ export default function AccountList() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <GroupForm
               initialData={editingGroup}
+              accounts={editingGroup.accounts || []}
               onSubmit={handleUpdateGroup}
               onCancel={() => setEditingGroup(null)}
             />
