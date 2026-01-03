@@ -137,6 +137,7 @@ export default function AccountForm({ onSubmit, onCancel, accounts = [], groups 
           accounts={accounts}
           editable={true}
           onChange={setFormulaItems}
+          currentAccountId={null}
         />
       )}
 

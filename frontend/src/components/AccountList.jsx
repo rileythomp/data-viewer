@@ -604,7 +604,7 @@ export default function AccountList() {
         <AccountForm
           onSubmit={handleCreateAccount}
           onCancel={() => setShowAddAccountForm(false)}
-          accounts={allAccounts.filter((a) => !a.is_calculated)}
+          accounts={allAccounts}
           groups={groups}
         />
       )}

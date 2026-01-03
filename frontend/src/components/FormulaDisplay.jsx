@@ -1,15 +1,19 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { detectCircularDependency } from '../utils/formulaValidation';
 
 export default function FormulaDisplay({
   formulaItems,
   accounts,
   totalBalance,
   editable = false,
-  onChange
+  onChange,
+  currentAccountId = null,
+  allAccounts = null,
 }) {
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [coefficient, setCoefficient] = useState('1');
+  const [validationError, setValidationError] = useState('');
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -64,6 +68,22 @@ export default function FormulaDisplay({
       return;
     }
 
+    // Check for circular dependency (use allAccounts if provided for full dependency graph)
+    const proposedFormula = [
+      ...formulaItems,
+      { accountId: account.id, coefficient: coef }
+    ];
+    const { hasCircle, errorMessage } = detectCircularDependency(
+      currentAccountId,
+      proposedFormula,
+      allAccounts || accounts
+    );
+    if (hasCircle) {
+      setValidationError(errorMessage);
+      return;
+    }
+    setValidationError('');
+
     const newItems = [...formulaItems, {
       accountId: account.id,
       accountName: account.account_name,
@@ -91,6 +111,9 @@ export default function FormulaDisplay({
 
   return (
     <div className="formula-section formula-display">
+      {validationError && (
+        <div className="formula-error">{validationError}</div>
+      )}
       {formulaItems && formulaItems.length > 0 && (
         <div className={`formula-items formula-items-vertical${!editable ? ' formula-items-no-margin' : ''}`}>
           {formulaItems.map((item, index) => {

@@ -7,6 +7,7 @@ import (
 
 	"finance-tracker/internal/models"
 	"finance-tracker/internal/repository"
+	"finance-tracker/internal/validation"
 
 	"github.com/gorilla/mux"
 )
@@ -64,6 +65,19 @@ func (h *AccountHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.AccountName == "" {
 		http.Error(w, "Account name is required", http.StatusBadRequest)
 		return
+	}
+
+	// Validate formula for circular dependencies
+	if req.IsCalculated && len(req.Formula) > 0 {
+		allAccounts, err := h.repo.GetAll()
+		if err != nil {
+			http.Error(w, "Failed to validate formula", http.StatusInternalServerError)
+			return
+		}
+		if err := validation.ValidateFormulaForCycles(0, req.Formula, allAccounts); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	account, err := h.repo.Create(&req)
@@ -270,6 +284,19 @@ func (h *AccountHandler) UpdateFormula(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
+	}
+
+	// Validate formula for circular dependencies
+	if req.IsCalculated && len(req.Formula) > 0 {
+		allAccounts, err := h.repo.GetAll()
+		if err != nil {
+			http.Error(w, "Failed to validate formula", http.StatusInternalServerError)
+			return
+		}
+		if err := validation.ValidateFormulaForCycles(id, req.Formula, allAccounts); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	account, err := h.repo.UpdateFormula(id, req.IsCalculated, req.Formula)

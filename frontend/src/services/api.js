@@ -194,7 +194,10 @@ export const accountsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_calculated: isCalculated, formula }),
     });
-    if (!res.ok) throw new Error('Failed to update formula');
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || 'Failed to update formula');
+    }
     return res.json();
   },
 };

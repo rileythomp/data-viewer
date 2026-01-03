@@ -81,9 +81,15 @@ export default function AccountDetail() {
     }).format(amount);
   };
 
-  const handleUpdateAccount = async (accountId, name, info) => {
+  const handleUpdateAccount = async (accountId, name, info, isCalculated, formula) => {
     await accountsApi.updateName(accountId, name);
     await accountsApi.updateInfo(accountId, info || '');
+
+    // Update formula if provided (isCalculated is not undefined)
+    if (isCalculated !== undefined) {
+      await accountsApi.updateFormula(accountId, isCalculated, formula);
+    }
+
     await fetchAccount();
   };
 
@@ -272,6 +278,7 @@ export default function AccountDetail() {
       {editingAccount && (
         <EditAccountModal
           account={editingAccount}
+          accounts={allAccounts}
           onSubmit={handleUpdateAccount}
           onClose={() => setEditingAccount(null)}
         />

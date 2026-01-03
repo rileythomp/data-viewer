@@ -622,6 +622,16 @@
   color: var(--color-success);
 }
 
+.formula-error {
+  background-color: var(--color-danger-light);
+  color: var(--color-danger);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
 /* Vertical formula display */
 .formula-items-vertical {
   display: flex;
