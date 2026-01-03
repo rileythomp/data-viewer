@@ -13,11 +13,9 @@ export default function UploadCreate() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [isDragging, setIsDragging] = useState(false);
 
-    const handleFileSelect = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
+    const validateAndSetFile = (file) => {
         // Validate file type
         const validTypes = ['text/csv', 'application/json'];
         const validExtensions = ['.csv', '.json'];
@@ -43,6 +41,40 @@ export default function UploadCreate() {
         if (!name) {
             const baseName = file.name.replace(/\.(csv|json)$/i, '');
             setName(baseName);
+        }
+    };
+
+    const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        validateAndSetFile(file);
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            validateAndSetFile(file);
         }
     };
 
@@ -139,7 +171,14 @@ export default function UploadCreate() {
                         />
 
                         {!selectedFile ? (
-                            <label htmlFor="file-input" className="file-upload-area">
+                            <label
+                                htmlFor="file-input"
+                                className={`file-upload-area ${isDragging ? 'dragging' : ''}`}
+                                onDragOver={handleDragOver}
+                                onDragEnter={handleDragEnter}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                            >
                                 <Upload size={32} className="file-upload-icon" />
                                 <span className="file-upload-text">
                                     Click to select or drag and drop
