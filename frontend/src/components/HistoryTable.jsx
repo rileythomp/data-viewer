@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { accountsApi } from '../services/api';
+import BalanceHistoryTable from './BalanceHistoryTable';
 
 export default function HistoryTable({ accountId, accountName, onClose }) {
   const [history, setHistory] = useState([]);
@@ -20,17 +21,6 @@ export default function HistoryTable({ accountId, accountName, onClose }) {
     fetchHistory();
   }, [accountId]);
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString();
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
@@ -45,24 +35,7 @@ export default function HistoryTable({ accountId, accountName, onClose }) {
             {history.length === 0 ? (
               <p>No history records found.</p>
             ) : (
-              <table className="history-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Account Name</th>
-                    <th>Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((record) => (
-                    <tr key={record.id}>
-                      <td>{formatDate(record.recorded_at)}</td>
-                      <td>{record.account_name_snapshot}</td>
-                      <td>{formatCurrency(record.balance)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <BalanceHistoryTable history={history} showAccountName={true} />
             )}
           </div>
         )}

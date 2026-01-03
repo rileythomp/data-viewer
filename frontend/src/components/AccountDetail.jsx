@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil, Archive } from 'lucide-react';
 import { accountsApi } from '../services/api';
 import EditAccountModal from './EditAccountModal';
+import BalanceHistoryTable from './BalanceHistoryTable';
 
 export default function AccountDetail() {
   const { id } = useParams();
@@ -57,10 +58,6 @@ export default function AccountDetail() {
       style: 'currency',
       currency: 'USD',
     }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString();
   };
 
   const handleUpdateAccount = async (accountId, name, info) => {
@@ -189,22 +186,7 @@ export default function AccountDetail() {
             <p className="empty-state-small">No history records yet.</p>
           ) : (
             <div className="history-table-container">
-              <table className="history-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((record) => (
-                    <tr key={record.id}>
-                      <td>{formatDate(record.recorded_at)}</td>
-                      <td>{formatCurrency(record.balance)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <BalanceHistoryTable history={history} showAccountName={false} />
             </div>
           )}
         </div>
