@@ -15,6 +15,9 @@ import ChartDetail from './components/ChartDetail'
 import UploadList from './components/UploadList'
 import UploadCreate from './components/UploadCreate'
 import UploadDetail from './components/UploadDetail'
+import DatasetList from './components/DatasetList'
+import DatasetCreate from './components/DatasetCreate'
+import DatasetDetail from './components/DatasetDetail'
 
 function App() {
   return (
@@ -35,6 +38,9 @@ function App() {
           <Route path="/uploads" element={<UploadList />} />
           <Route path="/uploads/new" element={<UploadCreate />} />
           <Route path="/uploads/:id" element={<UploadDetail />} />
+          <Route path="/datasets" element={<DatasetList />} />
+          <Route path="/datasets/new" element={<DatasetCreate />} />
+          <Route path="/datasets/:id" element={<DatasetDetail />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

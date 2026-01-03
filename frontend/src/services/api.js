@@ -452,3 +452,80 @@ export const uploadsApi = {
     return res.json();
   },
 };
+
+export const datasetsApi = {
+  getAll: async (page = 1, pageSize = 20) => {
+    const res = await fetch(`${API_BASE}/datasets?page=${page}&page_size=${pageSize}`);
+    if (!res.ok) throw new Error('Failed to fetch datasets');
+    return res.json();
+  },
+
+  getById: async (id) => {
+    const res = await fetch(`${API_BASE}/datasets/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch dataset');
+    return res.json();
+  },
+
+  getData: async (id, page = 1, pageSize = 50, sortColumn, sortDirection) => {
+    let url = `${API_BASE}/datasets/${id}/data?page=${page}&page_size=${pageSize}`;
+    if (sortColumn) url += `&sort_column=${encodeURIComponent(sortColumn)}`;
+    if (sortDirection) url += `&sort_direction=${sortDirection}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to fetch dataset data');
+    return res.json();
+  },
+
+  create: async (name, description, sourceIds) => {
+    const res = await fetch(`${API_BASE}/datasets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description,
+        source_ids: sourceIds,
+      }),
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || 'Failed to create dataset');
+    }
+    return res.json();
+  },
+
+  addSource: async (id, sourceType, sourceId) => {
+    const res = await fetch(`${API_BASE}/datasets/${id}/sources`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_type: sourceType,
+        source_id: sourceId,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to add source');
+    return res.json();
+  },
+
+  removeSource: async (id, sourceId) => {
+    const res = await fetch(`${API_BASE}/datasets/${id}/sources/${sourceId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to remove source');
+    return res.json();
+  },
+
+  rebuild: async (id) => {
+    const res = await fetch(`${API_BASE}/datasets/${id}/rebuild`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to rebuild dataset');
+    return res.json();
+  },
+
+  delete: async (id) => {
+    const res = await fetch(`${API_BASE}/datasets/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete dataset');
+    return res.json();
+  },
+};

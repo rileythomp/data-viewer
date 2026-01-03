@@ -21,12 +21,14 @@ func New(db *sql.DB) *mux.Router {
 	dashboardRepo := repository.NewDashboardRepository(db)
 	chartRepo := repository.NewChartRepository(db)
 	uploadRepo := repository.NewUploadRepository(db)
+	datasetRepo := repository.NewDatasetRepository(db)
 	accountHandler := handlers.NewAccountHandler(accountRepo, membershipRepo)
 	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
 	settingsHandler := handlers.NewSettingsHandler(settingsRepo)
 	dashboardHandler := handlers.NewDashboardHandler(dashboardRepo)
 	chartHandler := handlers.NewChartHandler(chartRepo)
 	uploadHandler := handlers.NewUploadHandler(uploadRepo)
+	datasetHandler := handlers.NewDatasetHandler(datasetRepo)
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
@@ -90,6 +92,16 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/uploads/{id}", uploadHandler.GetByID).Methods("GET")
 	api.HandleFunc("/uploads/{id}", uploadHandler.Delete).Methods("DELETE")
 	api.HandleFunc("/uploads/{id}/data", uploadHandler.GetData).Methods("GET")
+
+	// Dataset routes
+	api.HandleFunc("/datasets", datasetHandler.GetAll).Methods("GET")
+	api.HandleFunc("/datasets", datasetHandler.Create).Methods("POST")
+	api.HandleFunc("/datasets/{id}", datasetHandler.GetByID).Methods("GET")
+	api.HandleFunc("/datasets/{id}", datasetHandler.Delete).Methods("DELETE")
+	api.HandleFunc("/datasets/{id}/data", datasetHandler.GetData).Methods("GET")
+	api.HandleFunc("/datasets/{id}/sources", datasetHandler.AddSource).Methods("POST")
+	api.HandleFunc("/datasets/{id}/sources/{sourceId}", datasetHandler.RemoveSource).Methods("DELETE")
+	api.HandleFunc("/datasets/{id}/rebuild", datasetHandler.Rebuild).Methods("POST")
 
 	return r
 }
