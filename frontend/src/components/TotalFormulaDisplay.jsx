@@ -13,7 +13,6 @@ export default function TotalFormulaDisplay({
   const navigate = useNavigate();
   const [coefficient, setCoefficient] = useState('1');
   const [selectedType, setSelectedType] = useState('account');
-  const [selectedId, setSelectedId] = useState('');
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -58,24 +57,23 @@ export default function TotalFormulaDisplay({
     }, 0);
   };
 
-  const handleAddFormulaItem = () => {
-    if (!selectedId || !onChange) return;
+  const handleAddFormulaItem = (itemId, itemType) => {
+    if (!itemId || !onChange) return;
     const coef = parseFloat(coefficient) || 1;
-    const id = parseInt(selectedId);
+    const id = parseInt(itemId);
 
     // Check if item already in formula
-    if (formulaItems.some(item => item.type === selectedType && item.id === id)) {
+    if (formulaItems.some(item => item.type === itemType && item.id === id)) {
       return;
     }
 
     const newItems = [...formulaItems, {
       id: id,
-      type: selectedType,
+      type: itemType,
       coefficient: coef
     }];
     onChange(newItems);
     setCoefficient('1');
-    setSelectedId('');
   };
 
   const handleRemoveFormulaItem = (type, id) => {
@@ -176,18 +174,15 @@ export default function TotalFormulaDisplay({
           <span className="formula-multiply">x</span>
           <select
             value={selectedType}
-            onChange={(e) => {
-              setSelectedType(e.target.value);
-              setSelectedId('');
-            }}
+            onChange={(e) => setSelectedType(e.target.value)}
             className="formula-type-select"
           >
             <option value="account">Account</option>
             <option value="group">Group</option>
           </select>
           <select
-            value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
+            value=""
+            onChange={(e) => handleAddFormulaItem(e.target.value, selectedType)}
             className="formula-account-select"
           >
             <option value="">Select {selectedType}...</option>
@@ -197,14 +192,6 @@ export default function TotalFormulaDisplay({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={handleAddFormulaItem}
-            className="btn-secondary btn-small"
-            disabled={!selectedId}
-          >
-            Add
-          </button>
         </div>
       )}
 

@@ -28,7 +28,6 @@ import GroupForm from './GroupForm';
 import EditAccountModal from './EditAccountModal';
 import HistoryTable from './HistoryTable';
 import SettingsModal from './SettingsModal';
-import TotalFormulaDisplay from './TotalFormulaDisplay';
 
 function SortableItem({ item, children }) {
   const id = item.type === 'group' ? `group-${item.group.id}` : `account-${item.account.id}`;
@@ -801,17 +800,6 @@ export default function AccountList() {
               <Settings size={18} />
             </button>
           </div>
-          {listData.total_formula_config?.is_enabled && listData.total_formula_config?.formula?.length > 0 && (
-            <TotalFormulaDisplay
-              formulaItems={listData.total_formula_config.formula}
-              accounts={allAccounts}
-              groups={groups.map(g => {
-                const groupItem = listData.items.find(i => i.type === 'group' && i.group.id === g.id);
-                return { ...g, total_balance: groupItem?.group?.total_balance || 0 };
-              })}
-              totalBalance={listData.total_balance}
-            />
-          )}
         </div>
         <div className="header-actions">
           <button
