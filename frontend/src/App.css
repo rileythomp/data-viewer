@@ -2253,8 +2253,14 @@ select.account-select {
 .item-checkbox input[type="checkbox"] {
   width: 16px;
   height: 16px;
+  min-width: 16px;
+  flex-shrink: 0;
   cursor: pointer;
   accent-color: var(--color-primary);
+}
+
+.item-checkbox .group-color-dot {
+  flex-shrink: 0;
 }
 
 .item-checkbox-name {
