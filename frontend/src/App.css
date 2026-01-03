@@ -1879,7 +1879,7 @@ select.account-select {
   font-size: 0.625rem;
   font-weight: 700;
   border-radius: var(--radius-sm);
-  margin-right: var(--space-1);
+  margin-right: var(--space-2);
   flex-shrink: 0;
 }
 
