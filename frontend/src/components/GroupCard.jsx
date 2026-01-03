@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, History } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
+import BalanceHistoryModal from './BalanceHistoryModal';
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -50,6 +52,7 @@ export default function GroupCard({
   crossGroupDragAccountId,
 }) {
   const navigate = useNavigate();
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Make the group content a drop target
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
@@ -75,6 +78,11 @@ export default function GroupCard({
   const handleNavigateToGroup = (e) => {
     e.stopPropagation();
     navigate(`/groups/${group.id}`);
+  };
+
+  const handleViewHistory = (e) => {
+    e.stopPropagation();
+    setShowHistoryModal(true);
   };
 
   return (
@@ -104,6 +112,14 @@ export default function GroupCard({
         </div>
         <div className="group-header-right">
           <span className="group-total">{formatCurrency(group.total_balance)}</span>
+          <button
+            onClick={handleViewHistory}
+            className="btn-icon"
+            aria-label="View balance history"
+            title="History"
+          >
+            <History size={16} />
+          </button>
         </div>
       </div>
       {isExpanded && (
@@ -135,6 +151,15 @@ export default function GroupCard({
         <div className="group-content group-content-drop-hint">
           <p className="group-drop-hint">Drop here to add to group</p>
         </div>
+      )}
+
+      {showHistoryModal && (
+        <BalanceHistoryModal
+          entityType="group"
+          entityId={group.id}
+          entityName={group.group_name}
+          onClose={() => setShowHistoryModal(false)}
+        />
       )}
     </div>
   );
