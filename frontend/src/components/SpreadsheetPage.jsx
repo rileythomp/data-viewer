@@ -521,11 +521,15 @@ export default function SpreadsheetPage() {
       updateCell(editingCell, editValue);
       setEditingCell(null);
     }
+    // Restore focus to container so keyboard input is captured
+    containerRef.current?.focus();
   }, [editingCell, editValue, updateCell]);
 
   const cancelEdit = useCallback(() => {
     setEditingCell(null);
     setEditValue('');
+    // Restore focus to container so keyboard input is captured
+    containerRef.current?.focus();
   }, []);
 
   const moveSelection = useCallback((dCol, dRow) => {
