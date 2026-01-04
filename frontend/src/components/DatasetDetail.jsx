@@ -298,13 +298,18 @@ export default function DatasetDetail() {
                     <div className="sources-list">
                         {dataset.sources.map((source) => (
                             <div key={source.id} className="source-list-item">
-                                <div className="source-item-icon">
-                                    <FileSpreadsheet size={16} />
+                                <div
+                                    className="source-item-clickable"
+                                    onClick={() => navigate(`/uploads/${source.source_id}`)}
+                                >
+                                    <div className="source-item-icon">
+                                        <FileSpreadsheet size={16} />
+                                    </div>
+                                    <span className="source-item-name">
+                                        {source.source_name || `Upload #${source.source_id}`}
+                                    </span>
+                                    <span className="source-type-badge">{source.source_type}</span>
                                 </div>
-                                <span className="source-item-name">
-                                    {source.source_name || `Upload #${source.source_id}`}
-                                </span>
-                                <span className="source-type-badge">{source.source_type}</span>
                                 <button
                                     onClick={() => handleRemoveSource(source.id)}
                                     className="btn-icon-small btn-icon-danger"
