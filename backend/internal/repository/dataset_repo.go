@@ -351,7 +351,7 @@ func (r *DatasetRepository) BuildDataset(id int) error {
 		safeName := sanitizeColumnName(col)
 		colDefs[i] = fmt.Sprintf("%s TEXT", safeName)
 	}
-	createSQL := fmt.Sprintf("CREATE TABLE %s (id SERIAL PRIMARY KEY, %s)", tableName, strings.Join(colDefs, ", "))
+	createSQL := fmt.Sprintf("CREATE TABLE %s (_row_id SERIAL PRIMARY KEY, %s)", tableName, strings.Join(colDefs, ", "))
 	_, err = r.db.Exec(createSQL)
 	if err != nil {
 		r.setError(id, "failed to create data table: "+err.Error())
@@ -451,7 +451,7 @@ func (r *DatasetRepository) GetData(id int, page, pageSize int, sortColumn, sort
 	selectCols := strings.Join(safeColNames, ", ")
 
 	// Validate sort column
-	orderClause := "id"
+	orderClause := "_row_id"
 	if sortColumn != "" {
 		safeSortCol := sanitizeColumnName(sortColumn)
 		// Verify column exists
