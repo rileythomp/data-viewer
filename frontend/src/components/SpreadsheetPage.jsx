@@ -532,14 +532,7 @@ export default function SpreadsheetPage() {
   const rows = Array.from({ length: NUM_ROWS }, (_, i) => i + 1);
 
   return (
-    <div className="app" onKeyDown={handleKeyDown} tabIndex={0}>
-      <div className="header">
-        <div className="header-content">
-          <h1>Spreadsheet</h1>
-          <p className="header-subtitle">Enter values and formulas (e.g., =A1+B1, =SUM(A1:A10))</p>
-        </div>
-      </div>
-
+    <div className="app app-full-width" onKeyDown={handleKeyDown} tabIndex={0}>
       <div className="spreadsheet-formula-bar">
         <span className="spreadsheet-cell-address">{selectedCell}</span>
         <input

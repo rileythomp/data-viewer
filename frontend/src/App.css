@@ -31,6 +31,10 @@
   min-height: calc(100vh - 57px);
 }
 
+.app.app-full-width {
+  max-width: none;
+}
+
 /* Header */
 .header {
   display: flex;
