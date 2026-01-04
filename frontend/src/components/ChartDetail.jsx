@@ -14,6 +14,7 @@ import InlineEditableText from './InlineEditableText';
 import ChartLineView from './ChartLineView';
 import DatasetPieChartView from './DatasetPieChartView';
 import DatasetLineChartView from './DatasetLineChartView';
+import MultiSelectDropdown from './MultiSelectDropdown';
 
 const RADIAN = Math.PI / 180;
 const MIN_LABEL_PERCENT = 0.05; // 5% minimum to show label
@@ -148,20 +149,14 @@ export default function ChartDetail() {
     await fetchChart();
   };
 
-  const handleAccountToggle = async (accountId) => {
-    const newSelection = selectedAccounts.includes(accountId)
-      ? selectedAccounts.filter(aid => aid !== accountId)
-      : [...selectedAccounts, accountId];
+  const handleAccountsChange = async (newSelection) => {
     setSelectedAccounts(newSelection);
     await chartsApi.update(id, chart.name, chart.description, newSelection, selectedGroups);
     await fetchChart();
     await fetchHistory();
   };
 
-  const handleGroupToggle = async (groupId) => {
-    const newSelection = selectedGroups.includes(groupId)
-      ? selectedGroups.filter(gid => gid !== groupId)
-      : [...selectedGroups, groupId];
+  const handleGroupsChange = async (newSelection) => {
     setSelectedGroups(newSelection);
     await chartsApi.update(id, chart.name, chart.description, selectedAccounts, newSelection);
     await fetchChart();
@@ -286,38 +281,42 @@ export default function ChartDetail() {
 
           <div className="form-group">
             <label>Accounts</label>
-            <div className="item-selection">
-              {allAccounts.map((account) => (
-                <label key={account.id} className="item-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedAccounts.includes(account.id)}
-                    onChange={() => handleAccountToggle(account.id)}
-                  />
-                  <span className="item-checkbox-name">{account.account_name}</span>
-                </label>
-              ))}
-            </div>
+            <MultiSelectDropdown
+              items={allAccounts}
+              selectedIds={selectedAccounts}
+              onChange={handleAccountsChange}
+              placeholder="Select accounts..."
+              labelKey="account_name"
+            />
           </div>
 
           <div className="form-group">
             <label>Groups</label>
-            <div className="item-selection">
-              {allGroups.map((group) => (
-                <label key={group.id} className="item-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedGroups.includes(group.id)}
-                    onChange={() => handleGroupToggle(group.id)}
-                  />
+            <MultiSelectDropdown
+              items={allGroups}
+              selectedIds={selectedGroups}
+              onChange={handleGroupsChange}
+              placeholder="Select groups..."
+              labelKey="group_name"
+              renderOption={(group) => (
+                <>
                   <div
                     className="group-color-dot"
                     style={{ backgroundColor: group.color }}
                   />
-                  <span className="item-checkbox-name">{group.group_name}</span>
-                </label>
-              ))}
-            </div>
+                  <span>{group.group_name}</span>
+                </>
+              )}
+              renderChip={(group) => (
+                <>
+                  <div
+                    className="group-color-dot"
+                    style={{ backgroundColor: group.color }}
+                  />
+                  <span>{group.group_name}</span>
+                </>
+              )}
+            />
           </div>
         </div>
       )}
