@@ -66,6 +66,45 @@ function extractCellReferences(formula) {
   return Array.from(refs);
 }
 
+// Adjusts formula cell references based on row/column offset (for drag-to-fill)
+function adjustFormulaReferences(formula, colOffset, rowOffset) {
+  if (!formula || !formula.startsWith('=')) return formula;
+
+  // Regex to match cell references with optional $ markers
+  // Matches: A1, $A1, A$1, $A$1, including in ranges like A1:B2
+  const cellRefPattern = /(\$?)([A-Z])(\$?)(\d+)/gi;
+
+  return formula.replace(cellRefPattern, (match, colDollar, col, rowDollar, row) => {
+    const colIndex = letterToColumnIndex(col);
+    const rowIndex = parseInt(row, 10) - 1;
+
+    // Apply offsets only to non-absolute references
+    const newColIndex = colDollar === '$' ? colIndex : colIndex + colOffset;
+    const newRowIndex = rowDollar === '$' ? rowIndex : rowIndex + rowOffset;
+
+    // Bounds checking
+    if (newColIndex < 0 || newColIndex >= NUM_COLS ||
+        newRowIndex < 0 || newRowIndex >= NUM_ROWS) {
+      return '#REF!';
+    }
+
+    // Reconstruct the reference preserving $ markers
+    return `${colDollar}${columnIndexToLetter(newColIndex)}${rowDollar}${newRowIndex + 1}`;
+  });
+}
+
+// Determines drag direction based on initial movement
+function determineDragDirection(startX, startY, currentX, currentY, threshold = 5) {
+  const deltaX = Math.abs(currentX - startX);
+  const deltaY = Math.abs(currentY - startY);
+
+  if (deltaX < threshold && deltaY < threshold) {
+    return null; // Not enough movement to determine
+  }
+
+  return deltaX > deltaY ? 'horizontal' : 'vertical';
+}
+
 // Safe arithmetic expression evaluator using shunting-yard algorithm
 function tokenize(expr) {
   const tokens = [];
@@ -332,6 +371,13 @@ export default function SpreadsheetPage() {
   const inputRef = useRef(null);
   const formulaInputRef = useRef(null);
 
+  // Drag-to-fill state
+  const [isDraggingFill, setIsDraggingFill] = useState(false);
+  const [fillDragStart, setFillDragStart] = useState(null); // { x, y, cell }
+  const [fillDragDirection, setFillDragDirection] = useState(null); // 'horizontal' | 'vertical' | null
+  const [fillPreviewCells, setFillPreviewCells] = useState([]); // Array of cell addresses to highlight
+  const cellRefs = useRef({}); // Map of cellId -> DOM element ref for position calculations
+
   const getCellValue = useCallback((cellId) => {
     const cell = cells[cellId];
     if (!cell) return '';
@@ -528,6 +574,135 @@ export default function SpreadsheetPage() {
     return cell.computedValue;
   }, [cells]);
 
+  // Drag-to-fill: Apply fill to target cells
+  const applyFill = useCallback((sourceCell, targetCells) => {
+    const sourceData = cells[sourceCell];
+    if (!sourceData) return;
+
+    const sourceCoords = parseCellAddress(sourceCell);
+    if (!sourceCoords) return;
+
+    targetCells.forEach((targetCell) => {
+      const targetCoords = parseCellAddress(targetCell);
+      if (!targetCoords) return;
+
+      // Calculate offset from source to target
+      const colOffset = targetCoords.col - sourceCoords.col;
+      const rowOffset = targetCoords.row - sourceCoords.row;
+
+      let newValue;
+      if (sourceData.rawValue && sourceData.rawValue.startsWith('=')) {
+        // Adjust formula references
+        newValue = adjustFormulaReferences(sourceData.rawValue, colOffset, rowOffset);
+      } else {
+        // Plain value - copy as-is
+        newValue = sourceData.rawValue || '';
+      }
+
+      updateCell(targetCell, newValue);
+    });
+  }, [cells, updateCell]);
+
+  // Drag-to-fill: Handle mouse down on fill handle
+  const handleFillHandleMouseDown = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation(); // Prevent cell selection
+
+    setIsDraggingFill(true);
+    setFillDragStart({
+      x: e.clientX,
+      y: e.clientY,
+      cell: selectedCell
+    });
+    setFillDragDirection(null);
+    setFillPreviewCells([]);
+  }, [selectedCell]);
+
+  // Drag-to-fill: Document-level mouse tracking
+  useEffect(() => {
+    if (!isDraggingFill || !fillDragStart) return;
+
+    const handleMouseMove = (e) => {
+      const { x: startX, y: startY, cell: sourceCell } = fillDragStart;
+
+      // Determine direction if not yet locked
+      let direction = fillDragDirection;
+      if (!direction) {
+        direction = determineDragDirection(startX, startY, e.clientX, e.clientY);
+        if (direction) {
+          setFillDragDirection(direction);
+        }
+      }
+
+      if (!direction) return; // Not enough movement yet
+
+      // Calculate which cell the mouse is over based on cell positions
+      const sourceCoords = parseCellAddress(sourceCell);
+      if (!sourceCoords) return;
+
+      const fillCells = [];
+
+      // Find the target cell by checking all cell refs
+      for (const [cellId, el] of Object.entries(cellRefs.current)) {
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        const isInside = e.clientX >= rect.left && e.clientX <= rect.right &&
+                        e.clientY >= rect.top && e.clientY <= rect.bottom;
+
+        if (isInside) {
+          const targetCoords = parseCellAddress(cellId);
+          if (!targetCoords) break;
+
+          if (direction === 'horizontal') {
+            // Fill horizontally from source to target column (same row)
+            const startCol = Math.min(sourceCoords.col, targetCoords.col);
+            const endCol = Math.max(sourceCoords.col, targetCoords.col);
+            for (let col = startCol; col <= endCol; col++) {
+              const addr = getCellAddress(col, sourceCoords.row);
+              if (addr !== sourceCell) {
+                fillCells.push(addr);
+              }
+            }
+          } else {
+            // Fill vertically from source to target row (same column)
+            const startRow = Math.min(sourceCoords.row, targetCoords.row);
+            const endRow = Math.max(sourceCoords.row, targetCoords.row);
+            for (let row = startRow; row <= endRow; row++) {
+              const addr = getCellAddress(sourceCoords.col, row);
+              if (addr !== sourceCell) {
+                fillCells.push(addr);
+              }
+            }
+          }
+          break;
+        }
+      }
+
+      setFillPreviewCells(fillCells);
+    };
+
+    const handleMouseUp = () => {
+      // Apply the fill
+      if (fillPreviewCells.length > 0 && fillDragStart) {
+        applyFill(fillDragStart.cell, fillPreviewCells);
+      }
+
+      // Reset state
+      setIsDraggingFill(false);
+      setFillDragStart(null);
+      setFillDragDirection(null);
+      setFillPreviewCells([]);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingFill, fillDragStart, fillDragDirection, fillPreviewCells, applyFill]);
+
   const columns = Array.from({ length: NUM_COLS }, (_, i) => columnIndexToLetter(i));
   const rows = Array.from({ length: NUM_ROWS }, (_, i) => i + 1);
 
@@ -547,7 +722,7 @@ export default function SpreadsheetPage() {
         />
       </div>
 
-      <div className="spreadsheet-container">
+      <div className={`spreadsheet-container${isDraggingFill ? ' is-filling' : ''}`}>
         <table className="spreadsheet-grid">
           <thead>
             <tr>
@@ -567,13 +742,15 @@ export default function SpreadsheetPage() {
                   const cellId = `${col}${row}`;
                   const isSelected = cellId === selectedCell;
                   const isEditing = cellId === editingCell;
+                  const isFillPreview = fillPreviewCells.includes(cellId);
                   const cell = cells[cellId];
                   const hasError = cell?.error;
 
                   return (
                     <td
                       key={cellId}
-                      className={`spreadsheet-cell${isSelected ? ' spreadsheet-cell-selected' : ''}${hasError ? ' spreadsheet-cell-error' : ''}${isEditing ? ' spreadsheet-cell-editing' : ''}`}
+                      ref={(el) => { cellRefs.current[cellId] = el; }}
+                      className={`spreadsheet-cell${isSelected ? ' spreadsheet-cell-selected' : ''}${hasError ? ' spreadsheet-cell-error' : ''}${isEditing ? ' spreadsheet-cell-editing' : ''}${isFillPreview ? ' spreadsheet-cell-fill-preview' : ''}`}
                       onClick={() => handleCellClick(cellId)}
                       onDoubleClick={() => handleCellDoubleClick(cellId)}
                     >
@@ -588,6 +765,12 @@ export default function SpreadsheetPage() {
                         />
                       ) : (
                         displayValue(cellId)
+                      )}
+                      {isSelected && !isEditing && (
+                        <div
+                          className="spreadsheet-fill-handle"
+                          onMouseDown={handleFillHandleMouseDown}
+                        />
                       )}
                     </td>
                   );

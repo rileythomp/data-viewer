@@ -3232,3 +3232,44 @@ select.account-select {
   color: var(--color-text);
   outline: none;
 }
+
+/* Fill Handle - drag corner for copying cells */
+.spreadsheet-fill-handle {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  background-color: var(--color-primary);
+  border: 1px solid var(--color-surface);
+  cursor: crosshair;
+  z-index: 10;
+  border-radius: 1px;
+}
+
+.spreadsheet-fill-handle:hover {
+  background-color: var(--color-primary-hover, var(--color-primary));
+  transform: scale(1.2);
+}
+
+/* Selected cell needs relative positioning for fill handle */
+.spreadsheet-cell-selected {
+  position: relative;
+}
+
+/* Fill Preview Highlighting */
+.spreadsheet-cell-fill-preview {
+  background-color: var(--color-primary-light, rgba(59, 130, 246, 0.1)) !important;
+  outline: 1px dashed var(--color-primary);
+  outline-offset: -1px;
+}
+
+/* Cursor during drag */
+.spreadsheet-container.is-filling {
+  cursor: crosshair;
+}
+
+.spreadsheet-container.is-filling .spreadsheet-cell {
+  cursor: crosshair;
+  user-select: none;
+}
