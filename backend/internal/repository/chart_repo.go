@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"finance-tracker/internal/models"
 )
@@ -344,6 +346,75 @@ func (r *ChartRepository) computeDatasetPieData(cfg *models.ChartDatasetConfig) 
 	}, nil
 }
 
+// sortXValues returns indices that would sort xValues, trying numeric/date first, then alphabetic
+func sortXValues(xValues []string) []int {
+	indices := make([]int, len(xValues))
+	for i := range indices {
+		indices[i] = i
+	}
+
+	if len(xValues) == 0 {
+		return indices
+	}
+
+	// Try to parse all values as numbers
+	allNumeric := true
+	numericVals := make([]float64, len(xValues))
+	for i, v := range xValues {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			allNumeric = false
+			break
+		}
+		numericVals[i] = n
+	}
+
+	if allNumeric {
+		sort.Slice(indices, func(i, j int) bool {
+			return numericVals[indices[i]] < numericVals[indices[j]]
+		})
+		return indices
+	}
+
+	// Try to parse all values as dates (common formats)
+	dateFormats := []string{
+		"2006-01-02",
+		"01/02/2006",
+		"02/01/2006",
+		"Jan 2006",
+		"January 2006",
+		"2006-01",
+		"01-2006",
+		"2006",
+	}
+
+	for _, format := range dateFormats {
+		allDates := true
+		dateVals := make([]time.Time, len(xValues))
+		for i, v := range xValues {
+			t, err := time.Parse(format, v)
+			if err != nil {
+				allDates = false
+				break
+			}
+			dateVals[i] = t
+		}
+
+		if allDates {
+			sort.Slice(indices, func(i, j int) bool {
+				return dateVals[indices[i]].Before(dateVals[indices[j]])
+			})
+			return indices
+		}
+	}
+
+	// Fallback to alphabetic sort
+	sort.Slice(indices, func(i, j int) bool {
+		return xValues[indices[i]] < xValues[indices[j]]
+	})
+	return indices
+}
+
 // computeDatasetLineData retrieves data for line chart
 func (r *ChartRepository) computeDatasetLineData(cfg *models.ChartDatasetConfig) (*models.DatasetLineChartData, error) {
 	tableName := fmt.Sprintf("datasets_data.dataset_%d", cfg.DatasetID)
@@ -359,8 +430,7 @@ func (r *ChartRepository) computeDatasetLineData(cfg *models.ChartDatasetConfig)
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM %s
-		ORDER BY %s ASC
-	`, strings.Join(selectCols, ", "), tableName, xCol)
+	`, strings.Join(selectCols, ", "), tableName)
 
 	rows, err := r.db.Query(query)
 	if err != nil {
@@ -412,18 +482,32 @@ func (r *ChartRepository) computeDatasetLineData(cfg *models.ChartDatasetConfig)
 		}
 	}
 
+	// Sort data: try numeric first, then date, then alphabetically
+	sortedIndices := sortXValues(xValues)
+	sortedXValues := make([]string, len(xValues))
+	sortedSeriesData := make([][]float64, len(cfg.YColumns))
+	for i := range sortedSeriesData {
+		sortedSeriesData[i] = make([]float64, len(xValues))
+	}
+	for newIdx, oldIdx := range sortedIndices {
+		sortedXValues[newIdx] = xValues[oldIdx]
+		for seriesIdx := range seriesData {
+			sortedSeriesData[seriesIdx][newIdx] = seriesData[seriesIdx][oldIdx]
+		}
+	}
+
 	// Build series response
 	series := make([]models.DatasetLineChartSeries, len(cfg.YColumns))
 	for i, col := range cfg.YColumns {
 		series[i] = models.DatasetLineChartSeries{
 			Column: col,
 			Color:  accountColors[i%len(accountColors)],
-			Values: seriesData[i],
+			Values: sortedSeriesData[i],
 		}
 	}
 
 	return &models.DatasetLineChartData{
-		XValues: xValues,
+		XValues: sortedXValues,
 		Series:  series,
 	}, nil
 }
