@@ -362,49 +362,27 @@ func (r *DatasetRepository) BuildDataset(id int) error {
 	totalRows := 0
 	for _, source := range sources {
 		if source.SourceType == "upload" {
-			// Check if data exists in the normalized upload_rows table
-			var normalizedCount int
-			err = r.db.QueryRow("SELECT COUNT(*) FROM upload_rows WHERE upload_id = $1", source.SourceID).Scan(&normalizedCount)
+			var sourceRows [][]any
+
+			// Read from upload_rows table
+			rows, err := r.db.Query("SELECT data FROM upload_rows WHERE upload_id = $1 ORDER BY row_index", source.SourceID)
 			if err != nil {
 				continue
 			}
 
-			var sourceRows [][]any
-
-			if normalizedCount > 0 {
-				// Read from normalized upload_rows table
-				rows, err := r.db.Query("SELECT data FROM upload_rows WHERE upload_id = $1 ORDER BY row_index", source.SourceID)
-				if err != nil {
+			for rows.Next() {
+				var rowJSON []byte
+				if err := rows.Scan(&rowJSON); err != nil {
 					continue
 				}
 
-				for rows.Next() {
-					var rowJSON []byte
-					if err := rows.Scan(&rowJSON); err != nil {
-						continue
-					}
-
-					var row []any
-					if err := json.Unmarshal(rowJSON, &row); err != nil {
-						continue
-					}
-					sourceRows = append(sourceRows, row)
-				}
-				rows.Close()
-			} else {
-				// Fallback: read from legacy data JSONB column
-				var dataJSON []byte
-				err = r.db.QueryRow("SELECT data FROM uploads WHERE id = $1", source.SourceID).Scan(&dataJSON)
-				if err != nil {
+				var row []any
+				if err := json.Unmarshal(rowJSON, &row); err != nil {
 					continue
 				}
-
-				if len(dataJSON) > 0 {
-					if err := json.Unmarshal(dataJSON, &sourceRows); err != nil {
-						continue
-					}
-				}
+				sourceRows = append(sourceRows, row)
 			}
+			rows.Close()
 
 			// Insert all rows from this source
 			for _, row := range sourceRows {

@@ -13,7 +13,7 @@ The data upload system allows users to upload CSV or JSON files which are parsed
 | **CSV** | First row becomes column headers, remaining rows become data |
 | **JSON** | Array of objects (or single object) with keys as columns, values as rows |
 
-**Limits:** Max file size is 10MB.
+**Limits:** Max file size is 50MB.
 
 ---
 
@@ -37,7 +37,7 @@ The data upload system allows users to upload CSV or JSON files which are parsed
 
 ## Database Schema
 
-The `uploads` table stores all uploaded data:
+The `uploads` table stores upload metadata:
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -49,8 +49,17 @@ The `uploads` table stores all uploaded data:
 | `file_size` | INTEGER | Size in bytes |
 | `row_count` | INTEGER | Number of data rows |
 | `columns` | JSONB | Array of column names, e.g. `["institution", "account", "amount"]` |
-| `data` | JSONB | Array of row arrays, e.g. `[["RBC", "Savings", 1000], ...]` |
+| `status` | VARCHAR(20) | Upload status: `'pending'`, `'processing'`, `'completed'`, or `'error'` |
 | `created_at` | TIMESTAMP | When uploaded |
+
+The `upload_rows` table stores the actual row data:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | SERIAL | Primary key |
+| `upload_id` | INTEGER | Foreign key to `uploads.id` |
+| `row_index` | INTEGER | Row position (0-indexed) |
+| `data` | JSONB | Single row array, e.g. `["RBC", "Savings", 1000]` |
 
 ---
 
