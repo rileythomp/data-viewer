@@ -12,6 +12,8 @@ import {
 import { chartsApi, accountsApi, groupsApi } from '../services/api';
 import InlineEditableText from './InlineEditableText';
 import ChartLineView from './ChartLineView';
+import DatasetPieChartView from './DatasetPieChartView';
+import DatasetLineChartView from './DatasetLineChartView';
 
 const RADIAN = Math.PI / 180;
 const MIN_LABEL_PERCENT = 0.05; // 5% minimum to show label
@@ -68,15 +70,17 @@ export default function ChartDetail() {
       const data = await chartsApi.getById(id);
       setChart(data);
 
-      // Extract current account and group IDs from items
-      const accountIds = data.items
-        ?.filter(item => item.type === 'account')
-        .map(item => item.account.id) || [];
-      const groupIds = data.items
-        ?.filter(item => item.type === 'group')
-        .map(item => item.group.id) || [];
-      setSelectedAccounts(accountIds);
-      setSelectedGroups(groupIds);
+      // Only extract account/group IDs for accounts_groups mode
+      if (data.data_source === 'accounts_groups') {
+        const accountIds = data.items
+          ?.filter(item => item.type === 'account')
+          .map(item => item.account.id) || [];
+        const groupIds = data.items
+          ?.filter(item => item.type === 'group')
+          .map(item => item.group.id) || [];
+        setSelectedAccounts(accountIds);
+        setSelectedGroups(groupIds);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -125,12 +129,22 @@ export default function ChartDetail() {
 
   const handleSaveName = async (name) => {
     if (!name.trim()) throw new Error('Chart name is required');
-    await chartsApi.update(id, name.trim(), chart.description, selectedAccounts, selectedGroups);
+
+    if (chart.data_source === 'dataset') {
+      // For dataset charts, keep the dataset config when updating
+      await chartsApi.update(id, name.trim(), chart.description, [], [], chart.dataset_config);
+    } else {
+      await chartsApi.update(id, name.trim(), chart.description, selectedAccounts, selectedGroups);
+    }
     await fetchChart();
   };
 
   const handleSaveDescription = async (description) => {
-    await chartsApi.update(id, chart.name, description || '', selectedAccounts, selectedGroups);
+    if (chart.data_source === 'dataset') {
+      await chartsApi.update(id, chart.name, description || '', [], [], chart.dataset_config);
+    } else {
+      await chartsApi.update(id, chart.name, description || '', selectedAccounts, selectedGroups);
+    }
     await fetchChart();
   };
 
@@ -200,6 +214,8 @@ export default function ChartDetail() {
     );
   }
 
+  const isDatasetChart = chart.data_source === 'dataset';
+
   return (
     <div className="app">
       <div className="header">
@@ -210,13 +226,15 @@ export default function ChartDetail() {
               <span>Back</span>
             </button>
             <div className="detail-actions">
-              <button
-                onClick={() => setIsEditMode(!isEditMode)}
-                className={`btn-icon ${isEditMode ? 'btn-icon-active' : ''}`}
-                title={isEditMode ? "Done editing" : "Edit"}
-              >
-                {isEditMode ? <Check size={18} /> : <Pencil size={18} />}
-              </button>
+              {!isDatasetChart && (
+                <button
+                  onClick={() => setIsEditMode(!isEditMode)}
+                  className={`btn-icon ${isEditMode ? 'btn-icon-active' : ''}`}
+                  title={isEditMode ? "Done editing" : "Edit"}
+                >
+                  {isEditMode ? <Check size={18} /> : <Pencil size={18} />}
+                </button>
+              )}
               <button onClick={handleDelete} className="btn-icon btn-icon-danger" title="Delete">
                 <Trash2 size={18} />
               </button>
@@ -234,14 +252,25 @@ export default function ChartDetail() {
           ) : (
             <h1>{chart.name}</h1>
           )}
-          <p className="total-balance">Total: {formatCurrency(chart.total_balance)}</p>
+
+          {/* Show dataset info badge for dataset charts */}
+          {isDatasetChart && (
+            <div className="chart-info-badges">
+              <span className="info-badge">Dataset: {chart.dataset_name}</span>
+              <span className="info-badge">{chart.dataset_config?.chart_type === 'pie' ? 'Pie Chart' : 'Line Chart'}</span>
+            </div>
+          )}
+
+          {!isDatasetChart && (
+            <p className="total-balance">Total: {formatCurrency(chart.total_balance)}</p>
+          )}
           {chart.description && !isEditMode && (
             <p className="dashboard-description">{chart.description}</p>
           )}
         </div>
       </div>
 
-      {isEditMode && (
+      {isEditMode && !isDatasetChart && (
         <div className="dashboard-edit-panel">
           <div className="form-group">
             <label>Description</label>
@@ -293,70 +322,86 @@ export default function ChartDetail() {
         </div>
       )}
 
-      {chart.pie_data && chart.pie_data.length > 0 ? (
+      {/* Dataset-based chart rendering */}
+      {isDatasetChart ? (
         <>
-          <div className="chart-view-toggle">
-            <div className="view-toggle">
-              <button
-                className={`view-toggle-btn ${viewMode === 'pie' ? 'active' : ''}`}
-                onClick={() => setViewMode('pie')}
-              >
-                Pie
-              </button>
-              <button
-                className={`view-toggle-btn ${viewMode === 'line' ? 'active' : ''}`}
-                onClick={() => setViewMode('line')}
-              >
-                Line
-              </button>
-            </div>
-          </div>
-
-          {viewMode === 'pie' ? (
-            <div className="chart-container">
-              <ResponsiveContainer width="100%" height={400}>
-                <PieChart>
-                  <Pie
-                    data={chart.pie_data}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={120}
-                    label={renderCustomizedLabel}
-                    labelLine={(props) => {
-                      if (props.percent < MIN_LABEL_PERCENT) return null;
-                      return (
-                        <path
-                          d={`M${props.points[0].x},${props.points[0].y}L${props.points[1].x},${props.points[1].y}`}
-                          stroke="var(--color-text-muted)"
-                          fill="none"
-                        />
-                      );
-                    }}
-                  >
-                    {chart.pie_data.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend
-                    wrapperStyle={{ paddingTop: 20 }}
-                    formatter={(value) => <span style={{ marginRight: 16 }}>{value}</span>}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          ) : historyLoading ? (
-            <div className="loading">Loading history data...</div>
-          ) : historyData ? (
-            <ChartLineView historyData={historyData} />
+          {chart.dataset_config?.chart_type === 'pie' && chart.dataset_pie_data ? (
+            <DatasetPieChartView data={chart.dataset_pie_data} />
+          ) : chart.dataset_config?.chart_type === 'line' && chart.dataset_line_data ? (
+            <DatasetLineChartView data={chart.dataset_line_data} />
           ) : (
-            <p className="empty-state">No history data available for line chart.</p>
+            <p className="empty-state">No chart data available.</p>
           )}
         </>
       ) : (
-        <p className="empty-state">No items in this chart yet. Click edit to add accounts and groups.</p>
+        // Accounts/Groups chart rendering (existing)
+        <>
+          {chart.pie_data && chart.pie_data.length > 0 ? (
+            <>
+              <div className="chart-view-toggle">
+                <div className="view-toggle">
+                  <button
+                    className={`view-toggle-btn ${viewMode === 'pie' ? 'active' : ''}`}
+                    onClick={() => setViewMode('pie')}
+                  >
+                    Pie
+                  </button>
+                  <button
+                    className={`view-toggle-btn ${viewMode === 'line' ? 'active' : ''}`}
+                    onClick={() => setViewMode('line')}
+                  >
+                    Line
+                  </button>
+                </div>
+              </div>
+
+              {viewMode === 'pie' ? (
+                <div className="chart-container">
+                  <ResponsiveContainer width="100%" height={400}>
+                    <PieChart>
+                      <Pie
+                        data={chart.pie_data}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={120}
+                        label={renderCustomizedLabel}
+                        labelLine={(props) => {
+                          if (props.percent < MIN_LABEL_PERCENT) return null;
+                          return (
+                            <path
+                              d={`M${props.points[0].x},${props.points[0].y}L${props.points[1].x},${props.points[1].y}`}
+                              stroke="var(--color-text-muted)"
+                              fill="none"
+                            />
+                          );
+                        }}
+                      >
+                        {chart.pie_data.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend
+                        wrapperStyle={{ paddingTop: 20 }}
+                        formatter={(value) => <span style={{ marginRight: 16 }}>{value}</span>}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : historyLoading ? (
+                <div className="loading">Loading history data...</div>
+              ) : historyData ? (
+                <ChartLineView historyData={historyData} />
+              ) : (
+                <p className="empty-state">No history data available for line chart.</p>
+              )}
+            </>
+          ) : (
+            <p className="empty-state">No items in this chart yet. Click edit to add accounts and groups.</p>
+          )}
+        </>
       )}
     </div>
   );

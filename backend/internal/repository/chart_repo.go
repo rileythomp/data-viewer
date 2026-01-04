@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"finance-tracker/internal/models"
 )
@@ -93,6 +95,22 @@ func (r *ChartRepository) GetWithItems(id int) (*models.ChartWithItems, error) {
 		return nil, nil
 	}
 
+	// Check if this is a dataset-based chart
+	datasetCfg, err := r.getDatasetConfig(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if datasetCfg != nil {
+		// Dataset mode
+		return r.getDatasetChartData(chart, datasetCfg)
+	}
+
+	// Accounts/Groups mode (existing logic)
+	return r.getAccountsGroupsChartData(chart)
+}
+
+func (r *ChartRepository) getAccountsGroupsChartData(chart *models.Chart) (*models.ChartWithItems, error) {
 	// Get ALL non-archived accounts for balance resolution
 	allAccountsQuery := `
 		SELECT id, account_name, account_info, current_balance, is_archived, position, is_calculated, formula, created_at, updated_at
@@ -142,7 +160,7 @@ func (r *ChartRepository) GetWithItems(id int) (*models.ChartWithItems, error) {
 		WHERE chart_id = $1
 		ORDER BY position ASC
 	`
-	itemRows, err := r.db.Query(itemsQuery, id)
+	itemRows, err := r.db.Query(itemsQuery, chart.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query chart items: %w", err)
 	}
@@ -199,10 +217,271 @@ func (r *ChartRepository) GetWithItems(id int) (*models.ChartWithItems, error) {
 
 	return &models.ChartWithItems{
 		Chart:        *chart,
+		DataSource:   "accounts_groups",
 		Items:        items,
 		TotalBalance: totalBalance,
 		PieData:      pieData,
 	}, nil
+}
+
+// getDatasetConfig fetches dataset configuration for a chart
+func (r *ChartRepository) getDatasetConfig(chartID int) (*models.ChartDatasetConfig, error) {
+	query := `
+		SELECT id, chart_id, dataset_id, chart_type,
+		       COALESCE(x_column, ''), COALESCE(y_columns, '[]'),
+		       COALESCE(aggregation_field, ''), COALESCE(aggregation_value, ''),
+		       COALESCE(aggregation_operator, ''),
+		       created_at, updated_at
+		FROM chart_dataset_config
+		WHERE chart_id = $1
+	`
+	var cfg models.ChartDatasetConfig
+	var yColumnsJSON []byte
+
+	err := r.db.QueryRow(query, chartID).Scan(
+		&cfg.ID, &cfg.ChartID, &cfg.DatasetID, &cfg.ChartType,
+		&cfg.XColumn, &yColumnsJSON,
+		&cfg.AggregationField, &cfg.AggregationValue, &cfg.AggregationOperator,
+		&cfg.CreatedAt, &cfg.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dataset config: %w", err)
+	}
+
+	json.Unmarshal(yColumnsJSON, &cfg.YColumns)
+	return &cfg, nil
+}
+
+// getDatasetChartData returns chart data for dataset-based charts
+func (r *ChartRepository) getDatasetChartData(chart *models.Chart, cfg *models.ChartDatasetConfig) (*models.ChartWithItems, error) {
+	result := &models.ChartWithItems{
+		Chart:         *chart,
+		DataSource:    "dataset",
+		DatasetConfig: cfg,
+	}
+
+	// Get dataset name
+	var datasetName string
+	err := r.db.QueryRow("SELECT name FROM datasets WHERE id = $1", cfg.DatasetID).Scan(&datasetName)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to get dataset name: %w", err)
+	}
+	result.DatasetName = datasetName
+
+	// Compute chart data based on type
+	if cfg.ChartType == "pie" {
+		pieData, err := r.computeDatasetPieData(cfg)
+		if err != nil {
+			return nil, err
+		}
+		result.DatasetPieData = pieData
+	} else if cfg.ChartType == "line" {
+		lineData, err := r.computeDatasetLineData(cfg)
+		if err != nil {
+			return nil, err
+		}
+		result.DatasetLineData = lineData
+	}
+
+	return result, nil
+}
+
+// computeDatasetPieData runs aggregation query for pie chart
+func (r *ChartRepository) computeDatasetPieData(cfg *models.ChartDatasetConfig) (*models.DatasetPieChartData, error) {
+	tableName := fmt.Sprintf("datasets_data.dataset_%d", cfg.DatasetID)
+
+	// Sanitize column names
+	fieldCol := sanitizeColumnName(cfg.AggregationField)
+	valueCol := sanitizeColumnName(cfg.AggregationValue)
+
+	var aggFunc string
+	if cfg.AggregationOperator == "COUNT" {
+		aggFunc = fmt.Sprintf("COUNT(%s)", valueCol)
+	} else {
+		// Default to SUM, cast to numeric for proper aggregation
+		aggFunc = fmt.Sprintf("COALESCE(SUM(CAST(NULLIF(%s, '') AS NUMERIC)), 0)", valueCol)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT %s as label, %s as value
+		FROM %s
+		WHERE %s IS NOT NULL AND %s != ''
+		GROUP BY %s
+		ORDER BY value DESC
+	`, fieldCol, aggFunc, tableName, fieldCol, fieldCol, fieldCol)
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("aggregation query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var items []models.DatasetPieChartItem
+	var total float64
+	colorIndex := 0
+
+	for rows.Next() {
+		var label string
+		var value float64
+		if err := rows.Scan(&label, &value); err != nil {
+			return nil, fmt.Errorf("failed to scan aggregation row: %w", err)
+		}
+		items = append(items, models.DatasetPieChartItem{
+			Label: label,
+			Value: value,
+			Color: accountColors[colorIndex%len(accountColors)],
+		})
+		total += value
+		colorIndex++
+	}
+
+	return &models.DatasetPieChartData{
+		Items: items,
+		Total: total,
+	}, nil
+}
+
+// computeDatasetLineData retrieves data for line chart
+func (r *ChartRepository) computeDatasetLineData(cfg *models.ChartDatasetConfig) (*models.DatasetLineChartData, error) {
+	tableName := fmt.Sprintf("datasets_data.dataset_%d", cfg.DatasetID)
+
+	xCol := sanitizeColumnName(cfg.XColumn)
+
+	// Build column list for query
+	selectCols := []string{xCol}
+	for _, yCol := range cfg.YColumns {
+		selectCols = append(selectCols, sanitizeColumnName(yCol))
+	}
+
+	query := fmt.Sprintf(`
+		SELECT %s
+		FROM %s
+		ORDER BY %s ASC
+	`, strings.Join(selectCols, ", "), tableName, xCol)
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("line chart query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var xValues []string
+	seriesData := make([][]float64, len(cfg.YColumns))
+	for i := range seriesData {
+		seriesData[i] = []float64{}
+	}
+
+	for rows.Next() {
+		values := make([]interface{}, len(selectCols))
+		valuePtrs := make([]interface{}, len(selectCols))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, fmt.Errorf("failed to scan line chart row: %w", err)
+		}
+
+		// First column is X value
+		switch v := values[0].(type) {
+		case []byte:
+			xValues = append(xValues, string(v))
+		case string:
+			xValues = append(xValues, v)
+		default:
+			xValues = append(xValues, fmt.Sprintf("%v", v))
+		}
+
+		// Remaining columns are Y values
+		for i := 1; i < len(values); i++ {
+			var yVal float64
+			switch v := values[i].(type) {
+			case []byte:
+				yVal, _ = strconv.ParseFloat(string(v), 64)
+			case float64:
+				yVal = v
+			case int64:
+				yVal = float64(v)
+			case string:
+				yVal, _ = strconv.ParseFloat(v, 64)
+			}
+			seriesData[i-1] = append(seriesData[i-1], yVal)
+		}
+	}
+
+	// Build series response
+	series := make([]models.DatasetLineChartSeries, len(cfg.YColumns))
+	for i, col := range cfg.YColumns {
+		series[i] = models.DatasetLineChartSeries{
+			Column: col,
+			Color:  accountColors[i%len(accountColors)],
+			Values: seriesData[i],
+		}
+	}
+
+	return &models.DatasetLineChartData{
+		XValues: xValues,
+		Series:  series,
+	}, nil
+}
+
+// saveDatasetConfig saves or updates dataset configuration for a chart
+func (r *ChartRepository) saveDatasetConfig(tx *sql.Tx, chartID int, cfg *models.ChartDatasetConfigInput) error {
+	// Delete any existing chart_items (switching from accounts/groups to dataset)
+	_, err := tx.Exec("DELETE FROM chart_items WHERE chart_id = $1", chartID)
+	if err != nil {
+		return fmt.Errorf("failed to clear chart items: %w", err)
+	}
+
+	yColumnsJSON, _ := json.Marshal(cfg.YColumns)
+
+	// Convert empty strings to nil for nullable fields
+	var xColumn, aggregationField, aggregationValue, aggregationOperator interface{}
+	if cfg.XColumn != "" {
+		xColumn = cfg.XColumn
+	}
+	if cfg.AggregationField != "" {
+		aggregationField = cfg.AggregationField
+	}
+	if cfg.AggregationValue != "" {
+		aggregationValue = cfg.AggregationValue
+	}
+	if cfg.AggregationOperator != "" {
+		aggregationOperator = cfg.AggregationOperator
+	}
+
+	query := `
+		INSERT INTO chart_dataset_config
+			(chart_id, dataset_id, chart_type, x_column, y_columns,
+			 aggregation_field, aggregation_value, aggregation_operator)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (chart_id) DO UPDATE SET
+			dataset_id = EXCLUDED.dataset_id,
+			chart_type = EXCLUDED.chart_type,
+			x_column = EXCLUDED.x_column,
+			y_columns = EXCLUDED.y_columns,
+			aggregation_field = EXCLUDED.aggregation_field,
+			aggregation_value = EXCLUDED.aggregation_value,
+			aggregation_operator = EXCLUDED.aggregation_operator,
+			updated_at = NOW()
+	`
+	_, err = tx.Exec(query, chartID, cfg.DatasetID, cfg.ChartType,
+		xColumn, yColumnsJSON,
+		aggregationField, aggregationValue, aggregationOperator)
+	if err != nil {
+		return fmt.Errorf("failed to save dataset config: %w", err)
+	}
+
+	return nil
+}
+
+// clearDatasetConfig removes dataset configuration when switching to accounts/groups mode
+func (r *ChartRepository) clearDatasetConfig(tx *sql.Tx, chartID int) error {
+	_, err := tx.Exec("DELETE FROM chart_dataset_config WHERE chart_id = $1", chartID)
+	return err
 }
 
 func (r *ChartRepository) getGroupsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.AccountGroupWithAccounts, error) {
@@ -318,26 +597,34 @@ func (r *ChartRepository) Create(req *models.CreateChartRequest) (*models.ChartW
 		return nil, fmt.Errorf("failed to create chart: %w", err)
 	}
 
-	// Insert items
-	position := 0
-	for _, accountID := range req.AccountIDs {
-		position++
-		_, err = tx.Exec(
-			"INSERT INTO chart_items (chart_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
-			c.ID, "account", accountID, position,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add account to chart: %w", err)
+	// Determine mode and save appropriate config
+	if req.DatasetConfig != nil {
+		// Dataset mode
+		if err := r.saveDatasetConfig(tx, c.ID, req.DatasetConfig); err != nil {
+			return nil, fmt.Errorf("failed to save dataset config: %w", err)
 		}
-	}
-	for _, groupID := range req.GroupIDs {
-		position++
-		_, err = tx.Exec(
-			"INSERT INTO chart_items (chart_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
-			c.ID, "group", groupID, position,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add group to chart: %w", err)
+	} else {
+		// Accounts/Groups mode (existing logic)
+		position := 0
+		for _, accountID := range req.AccountIDs {
+			position++
+			_, err = tx.Exec(
+				"INSERT INTO chart_items (chart_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+				c.ID, "account", accountID, position,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to add account to chart: %w", err)
+			}
+		}
+		for _, groupID := range req.GroupIDs {
+			position++
+			_, err = tx.Exec(
+				"INSERT INTO chart_items (chart_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+				c.ID, "group", groupID, position,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to add group to chart: %w", err)
+			}
 		}
 	}
 
@@ -373,32 +660,45 @@ func (r *ChartRepository) Update(id int, req *models.UpdateChartRequest) (*model
 		return nil, fmt.Errorf("failed to update chart: %w", err)
 	}
 
-	// Delete existing items
-	_, err = tx.Exec("DELETE FROM chart_items WHERE chart_id = $1", id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete chart items: %w", err)
-	}
-
-	// Insert new items
-	position := 0
-	for _, accountID := range req.AccountIDs {
-		position++
-		_, err = tx.Exec(
-			"INSERT INTO chart_items (chart_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
-			id, "account", accountID, position,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add account to chart: %w", err)
+	// Determine mode and save appropriate config
+	if req.DatasetConfig != nil {
+		// Dataset mode - saves dataset config and clears chart_items
+		if err := r.saveDatasetConfig(tx, id, req.DatasetConfig); err != nil {
+			return nil, fmt.Errorf("failed to save dataset config: %w", err)
 		}
-	}
-	for _, groupID := range req.GroupIDs {
-		position++
-		_, err = tx.Exec(
-			"INSERT INTO chart_items (chart_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
-			id, "group", groupID, position,
-		)
+	} else {
+		// Accounts/Groups mode - clear any dataset config and update items
+		if err := r.clearDatasetConfig(tx, id); err != nil {
+			return nil, fmt.Errorf("failed to clear dataset config: %w", err)
+		}
+
+		// Delete existing items
+		_, err = tx.Exec("DELETE FROM chart_items WHERE chart_id = $1", id)
 		if err != nil {
-			return nil, fmt.Errorf("failed to add group to chart: %w", err)
+			return nil, fmt.Errorf("failed to delete chart items: %w", err)
+		}
+
+		// Insert new items
+		position := 0
+		for _, accountID := range req.AccountIDs {
+			position++
+			_, err = tx.Exec(
+				"INSERT INTO chart_items (chart_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+				id, "account", accountID, position,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to add account to chart: %w", err)
+			}
+		}
+		for _, groupID := range req.GroupIDs {
+			position++
+			_, err = tx.Exec(
+				"INSERT INTO chart_items (chart_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+				id, "group", groupID, position,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to add group to chart: %w", err)
+			}
 		}
 	}
 
