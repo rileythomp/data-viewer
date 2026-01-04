@@ -9,7 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { chartsApi, accountsApi, groupsApi } from '../services/api';
+import { chartsApi, accountsApi, groupsApi, datasetsApi } from '../services/api';
 import InlineEditableText from './InlineEditableText';
 import ChartLineView from './ChartLineView';
 import DatasetPieChartView from './DatasetPieChartView';
@@ -65,13 +65,24 @@ export default function ChartDetail() {
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Dataset edit state
+  const [datasets, setDatasets] = useState([]);
+  const [datasetColumns, setDatasetColumns] = useState([]);
+  const [selectedDataset, setSelectedDataset] = useState(null);
+  const [chartType, setChartType] = useState('line');
+  const [xColumn, setXColumn] = useState('');
+  const [yColumns, setYColumns] = useState([]);
+  const [aggregationField, setAggregationField] = useState('');
+  const [aggregationValue, setAggregationValue] = useState('');
+  const [aggregationOperator, setAggregationOperator] = useState('SUM');
+
   const fetchChart = async () => {
     try {
       setError('');
       const data = await chartsApi.getById(id);
       setChart(data);
 
-      // Only extract account/group IDs for accounts_groups mode
+      // Extract data based on chart mode
       if (data.data_source === 'accounts_groups') {
         const accountIds = data.items
           ?.filter(item => item.type === 'account')
@@ -81,6 +92,15 @@ export default function ChartDetail() {
           .map(item => item.group.id) || [];
         setSelectedAccounts(accountIds);
         setSelectedGroups(groupIds);
+      } else if (data.data_source === 'dataset' && data.dataset_config) {
+        // Initialize dataset edit state from chart config
+        setSelectedDataset(data.dataset_config.dataset_id);
+        setChartType(data.dataset_config.chart_type || 'line');
+        setXColumn(data.dataset_config.x_column || '');
+        setYColumns(data.dataset_config.y_columns || []);
+        setAggregationField(data.dataset_config.aggregation_field || '');
+        setAggregationValue(data.dataset_config.aggregation_value || '');
+        setAggregationOperator(data.dataset_config.aggregation_operator || 'SUM');
       }
     } catch (err) {
       setError(err.message);
@@ -91,12 +111,15 @@ export default function ChartDetail() {
 
   const fetchSelectionData = async () => {
     try {
-      const [accountsData, groupsData] = await Promise.all([
+      const [accountsData, groupsData, datasetsData] = await Promise.all([
         accountsApi.getAll(),
         groupsApi.getAll(),
+        datasetsApi.getAll(),
       ]);
       setAllAccounts(accountsData || []);
       setAllGroups(groupsData || []);
+      // Filter to only ready datasets
+      setDatasets((datasetsData.datasets || []).filter(d => d.status === 'ready'));
     } catch (err) {
       // Silently fail - selection will just be empty
     }
@@ -120,6 +143,19 @@ export default function ChartDetail() {
     fetchSelectionData();
     fetchHistory();
   }, [id]);
+
+  // Fetch dataset columns when selectedDataset changes
+  useEffect(() => {
+    if (selectedDataset) {
+      datasetsApi.getById(selectedDataset).then(data => {
+        setDatasetColumns(data.columns || []);
+      }).catch(() => {
+        setDatasetColumns([]);
+      });
+    } else {
+      setDatasetColumns([]);
+    }
+  }, [selectedDataset]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -161,6 +197,91 @@ export default function ChartDetail() {
     await chartsApi.update(id, chart.name, chart.description, selectedAccounts, newSelection);
     await fetchChart();
     await fetchHistory();
+  };
+
+  // Dataset config update helpers
+  const buildDatasetConfig = (overrides = {}) => {
+    const config = {
+      dataset_id: overrides.dataset_id ?? selectedDataset,
+      chart_type: overrides.chart_type ?? chartType,
+    };
+
+    const type = config.chart_type;
+    if (type === 'line') {
+      config.x_column = overrides.x_column ?? xColumn;
+      config.y_columns = overrides.y_columns ?? yColumns;
+    } else {
+      config.aggregation_field = overrides.aggregation_field ?? aggregationField;
+      config.aggregation_value = overrides.aggregation_value ?? aggregationValue;
+      config.aggregation_operator = overrides.aggregation_operator ?? aggregationOperator;
+    }
+
+    return config;
+  };
+
+  const handleDatasetChange = async (newDatasetId) => {
+    setSelectedDataset(newDatasetId);
+    // Reset columns when dataset changes
+    setXColumn('');
+    setYColumns([]);
+    setAggregationField('');
+    setAggregationValue('');
+    // Note: Don't save yet - user needs to configure columns first
+  };
+
+  const handleChartTypeChange = async (newType) => {
+    setChartType(newType);
+    // Reset column selections when switching chart type
+    setXColumn('');
+    setYColumns([]);
+    setAggregationField('');
+    setAggregationValue('');
+    // Note: Don't save yet - user needs to configure columns first
+  };
+
+  const handleXColumnChange = async (column) => {
+    setXColumn(column);
+    if (column && yColumns.length > 0) {
+      const config = buildDatasetConfig({ x_column: column });
+      await chartsApi.update(id, chart.name, chart.description, [], [], config);
+      await fetchChart();
+    }
+  };
+
+  const handleYColumnsChange = async (columns) => {
+    setYColumns(columns);
+    if (xColumn && columns.length > 0) {
+      const config = buildDatasetConfig({ y_columns: columns });
+      await chartsApi.update(id, chart.name, chart.description, [], [], config);
+      await fetchChart();
+    }
+  };
+
+  const handleAggregationFieldChange = async (field) => {
+    setAggregationField(field);
+    if (field && aggregationValue) {
+      const config = buildDatasetConfig({ aggregation_field: field });
+      await chartsApi.update(id, chart.name, chart.description, [], [], config);
+      await fetchChart();
+    }
+  };
+
+  const handleAggregationValueChange = async (value) => {
+    setAggregationValue(value);
+    if (aggregationField && value) {
+      const config = buildDatasetConfig({ aggregation_value: value });
+      await chartsApi.update(id, chart.name, chart.description, [], [], config);
+      await fetchChart();
+    }
+  };
+
+  const handleAggregationOperatorChange = async (op) => {
+    setAggregationOperator(op);
+    if (aggregationField && aggregationValue) {
+      const config = buildDatasetConfig({ aggregation_operator: op });
+      await chartsApi.update(id, chart.name, chart.description, [], [], config);
+      await fetchChart();
+    }
   };
 
   const handleDelete = async () => {
@@ -221,15 +342,13 @@ export default function ChartDetail() {
               <span>Back</span>
             </button>
             <div className="detail-actions">
-              {!isDatasetChart && (
-                <button
-                  onClick={() => setIsEditMode(!isEditMode)}
-                  className={`btn-icon ${isEditMode ? 'btn-icon-active' : ''}`}
-                  title={isEditMode ? "Done editing" : "Edit"}
-                >
-                  {isEditMode ? <Check size={18} /> : <Pencil size={18} />}
-                </button>
-              )}
+              <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`btn-icon ${isEditMode ? 'btn-icon-active' : ''}`}
+                title={isEditMode ? "Done editing" : "Edit"}
+              >
+                {isEditMode ? <Check size={18} /> : <Pencil size={18} />}
+              </button>
               <button onClick={handleDelete} className="btn-icon btn-icon-danger" title="Delete">
                 <Trash2 size={18} />
               </button>
@@ -248,8 +367,8 @@ export default function ChartDetail() {
             <h1>{chart.name}</h1>
           )}
 
-          {/* Show dataset info badge for dataset charts */}
-          {isDatasetChart && (
+          {/* Show dataset info badge for dataset charts (hide in edit mode) */}
+          {isDatasetChart && !isEditMode && (
             <div className="chart-info-badges">
               <span className="info-badge">Dataset: {chart.dataset_name}</span>
               <span className="info-badge">{chart.dataset_config?.chart_type === 'pie' ? 'Pie Chart' : 'Line Chart'}</span>
@@ -318,6 +437,127 @@ export default function ChartDetail() {
               )}
             />
           </div>
+        </div>
+      )}
+
+      {/* Dataset chart edit panel */}
+      {isEditMode && isDatasetChart && (
+        <div className="dashboard-edit-panel">
+          <div className="form-group">
+            <label>Description</label>
+            <InlineEditableText
+              value={chart.description || ''}
+              onSave={handleSaveDescription}
+              type="textarea"
+              className="detail-info-textarea"
+              placeholder="Add description..."
+              rows={3}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Dataset</label>
+            <select
+              value={selectedDataset || ''}
+              onChange={(e) => handleDatasetChange(e.target.value ? parseInt(e.target.value) : null)}
+            >
+              <option value="">Select a dataset...</option>
+              {datasets.map((dataset) => (
+                <option key={dataset.id} value={dataset.id}>
+                  {dataset.name} ({dataset.row_count} rows)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedDataset && (
+            <>
+              <div className="form-group">
+                <label>Chart Type</label>
+                <div className="toggle-group">
+                  <button
+                    type="button"
+                    className={`toggle-btn ${chartType === 'line' ? 'active' : ''}`}
+                    onClick={() => handleChartTypeChange('line')}
+                  >
+                    Line Chart
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn ${chartType === 'pie' ? 'active' : ''}`}
+                    onClick={() => handleChartTypeChange('pie')}
+                  >
+                    Pie Chart
+                  </button>
+                </div>
+              </div>
+
+              {chartType === 'line' ? (
+                <>
+                  <div className="form-group">
+                    <label>X-Axis Column</label>
+                    <select value={xColumn} onChange={(e) => handleXColumnChange(e.target.value)}>
+                      <option value="">Select column...</option>
+                      {datasetColumns.map((col) => (
+                        <option key={col.id} value={col.name}>{col.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Y-Axis Columns (select one or more)</label>
+                    <div className="item-selection">
+                      {datasetColumns.map((col) => (
+                        <label key={col.id} className="item-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={yColumns.includes(col.name)}
+                            onChange={() => {
+                              const newColumns = yColumns.includes(col.name)
+                                ? yColumns.filter(c => c !== col.name)
+                                : [...yColumns, col.name];
+                              handleYColumnsChange(newColumns);
+                            }}
+                          />
+                          <span className="item-checkbox-name">{col.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label>Group By Column</label>
+                    <select value={aggregationField} onChange={(e) => handleAggregationFieldChange(e.target.value)}>
+                      <option value="">Select column...</option>
+                      {datasetColumns.map((col) => (
+                        <option key={col.id} value={col.name}>{col.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Value Column</label>
+                    <select value={aggregationValue} onChange={(e) => handleAggregationValueChange(e.target.value)}>
+                      <option value="">Select column...</option>
+                      {datasetColumns.map((col) => (
+                        <option key={col.id} value={col.name}>{col.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Aggregation</label>
+                    <select value={aggregationOperator} onChange={(e) => handleAggregationOperatorChange(e.target.value)}>
+                      <option value="SUM">Sum</option>
+                      <option value="COUNT">Count</option>
+                    </select>
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
 

@@ -507,6 +507,7 @@ func (r *ChartRepository) computeDatasetLineData(cfg *models.ChartDatasetConfig)
 	}
 
 	return &models.DatasetLineChartData{
+		XColumn: cfg.XColumn,
 		XValues: sortedXValues,
 		Series:  series,
 	}, nil

@@ -127,6 +127,7 @@ type DatasetPieChartItem struct {
 
 // DatasetLineChartData represents data for rendering a dataset line chart
 type DatasetLineChartData struct {
+	XColumn string                   `json:"x_column"`
 	XValues []string                 `json:"x_values"`
 	Series  []DatasetLineChartSeries `json:"series"`
 }
