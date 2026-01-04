@@ -425,3 +425,120 @@ func (r *ChartRepository) Delete(id int) error {
 
 	return nil
 }
+
+func (r *ChartRepository) GetChartHistory(id int) (*models.ChartHistoryResponse, error) {
+	// Get chart items
+	itemsQuery := `
+		SELECT item_type, item_id, position
+		FROM chart_items
+		WHERE chart_id = $1
+		ORDER BY position ASC
+	`
+	itemRows, err := r.db.Query(itemsQuery, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query chart items: %w", err)
+	}
+	defer itemRows.Close()
+
+	var series []models.ChartHistorySeries
+	colorIndex := 0
+
+	for itemRows.Next() {
+		var itemType string
+		var itemID, position int
+		if err := itemRows.Scan(&itemType, &itemID, &position); err != nil {
+			return nil, fmt.Errorf("failed to scan chart item: %w", err)
+		}
+
+		if itemType == "account" {
+			// Get account info
+			var name string
+			err := r.db.QueryRow("SELECT account_name FROM account_balances WHERE id = $1", itemID).Scan(&name)
+			if err != nil {
+				continue // Skip if account not found
+			}
+
+			// Get account history
+			historyQuery := `
+				SELECT recorded_at, balance
+				FROM balance_history
+				WHERE account_id = $1
+				ORDER BY recorded_at ASC
+			`
+			historyRows, err := r.db.Query(historyQuery, itemID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query account history: %w", err)
+			}
+
+			var history []models.ChartHistoryEntry
+			for historyRows.Next() {
+				var recordedAt string
+				var balance float64
+				if err := historyRows.Scan(&recordedAt, &balance); err != nil {
+					historyRows.Close()
+					return nil, fmt.Errorf("failed to scan history: %w", err)
+				}
+				history = append(history, models.ChartHistoryEntry{
+					Date:    recordedAt,
+					Balance: balance,
+				})
+			}
+			historyRows.Close()
+
+			series = append(series, models.ChartHistorySeries{
+				ID:      itemID,
+				Name:    name,
+				Color:   accountColors[colorIndex%len(accountColors)],
+				Type:    "account",
+				History: history,
+			})
+			colorIndex++
+		} else if itemType == "group" {
+			// Get group info
+			var name, color string
+			err := r.db.QueryRow("SELECT group_name, color FROM account_groups WHERE id = $1", itemID).Scan(&name, &color)
+			if err != nil {
+				continue // Skip if group not found
+			}
+
+			// Get group history
+			historyQuery := `
+				SELECT recorded_at, balance
+				FROM group_balance_history
+				WHERE group_id = $1
+				ORDER BY recorded_at ASC
+			`
+			historyRows, err := r.db.Query(historyQuery, itemID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query group history: %w", err)
+			}
+
+			var history []models.ChartHistoryEntry
+			for historyRows.Next() {
+				var recordedAt string
+				var balance float64
+				if err := historyRows.Scan(&recordedAt, &balance); err != nil {
+					historyRows.Close()
+					return nil, fmt.Errorf("failed to scan history: %w", err)
+				}
+				history = append(history, models.ChartHistoryEntry{
+					Date:    recordedAt,
+					Balance: balance,
+				})
+			}
+			historyRows.Close()
+
+			series = append(series, models.ChartHistorySeries{
+				ID:      itemID,
+				Name:    name,
+				Color:   color,
+				Type:    "group",
+				History: history,
+			})
+		}
+	}
+
+	return &models.ChartHistoryResponse{
+		Series: series,
+	}, nil
+}
