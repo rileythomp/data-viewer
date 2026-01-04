@@ -3097,3 +3097,134 @@ select.account-select {
 .upload-error {
   margin-bottom: var(--space-4);
 }
+
+/* Spreadsheet Styles */
+.spreadsheet-formula-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.spreadsheet-cell-address {
+  font-weight: 600;
+  min-width: 50px;
+  color: var(--color-text-secondary);
+  font-family: monospace;
+}
+
+.spreadsheet-formula-input {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: monospace;
+  font-size: 0.875rem;
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+.spreadsheet-formula-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light, rgba(59, 130, 246, 0.1));
+}
+
+.spreadsheet-container {
+  width: 100%;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  max-height: calc(100vh - 280px);
+}
+
+.spreadsheet-grid {
+  border-collapse: collapse;
+  table-layout: fixed;
+  min-width: 100%;
+}
+
+.spreadsheet-header-cell {
+  background-color: var(--color-border-light);
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  padding: var(--space-2);
+  text-align: center;
+  border: 1px solid var(--color-border);
+  min-width: 80px;
+  user-select: none;
+}
+
+.spreadsheet-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  min-width: 50px;
+  width: 50px;
+}
+
+.spreadsheet-col-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.spreadsheet-row-header {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 50px;
+  width: 50px;
+}
+
+.spreadsheet-cell {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  min-width: 80px;
+  width: 80px;
+  height: 32px;
+  cursor: cell;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  background-color: var(--color-surface);
+}
+
+.spreadsheet-cell:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.spreadsheet-cell-selected {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+  background-color: var(--color-primary-light, rgba(59, 130, 246, 0.05));
+}
+
+.spreadsheet-cell-editing {
+  padding: 0;
+}
+
+.spreadsheet-cell-error {
+  color: var(--color-danger);
+  font-size: 0.75rem;
+}
+
+.spreadsheet-cell-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  font-family: inherit;
+  font-size: inherit;
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  outline: none;
+}
