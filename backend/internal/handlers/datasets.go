@@ -86,7 +86,11 @@ func (h *DatasetHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	dataset, err := h.repo.Create(&req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if repository.IsValidationError(err) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -171,7 +175,11 @@ func (h *DatasetHandler) AddSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.repo.AddSource(id, req.SourceType, req.SourceID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if repository.IsValidationError(err) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
