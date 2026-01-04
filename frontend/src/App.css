@@ -2950,7 +2950,6 @@ select.account-select {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
   background-color: var(--color-background);
   border-radius: var(--radius-md);
 }
@@ -2992,7 +2991,7 @@ select.account-select {
   gap: var(--space-3);
   flex: 1;
   cursor: pointer;
-  padding: var(--space-1);
+  padding: var(--space-2);
   border-radius: var(--radius-sm);
   transition: background-color var(--transition-fast);
 }
@@ -3076,6 +3075,7 @@ select.account-select {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
