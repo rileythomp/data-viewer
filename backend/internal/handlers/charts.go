@@ -79,6 +79,46 @@ func (h *ChartHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate mutual exclusivity
+	hasDatasetConfig := req.DatasetConfig != nil
+	hasAccountsGroups := len(req.AccountIDs) > 0 || len(req.GroupIDs) > 0
+
+	if hasDatasetConfig && hasAccountsGroups {
+		http.Error(w, "Cannot specify both dataset config and accounts/groups", http.StatusBadRequest)
+		return
+	}
+
+	// Validate dataset config if provided
+	if hasDatasetConfig {
+		if req.DatasetConfig.DatasetID == 0 {
+			http.Error(w, "Dataset ID is required", http.StatusBadRequest)
+			return
+		}
+		if req.DatasetConfig.ChartType != "line" && req.DatasetConfig.ChartType != "pie" {
+			http.Error(w, "Chart type must be 'line' or 'pie'", http.StatusBadRequest)
+			return
+		}
+		if req.DatasetConfig.ChartType == "line" {
+			if req.DatasetConfig.XColumn == "" || len(req.DatasetConfig.YColumns) == 0 {
+				http.Error(w, "Line charts require x_column and y_columns", http.StatusBadRequest)
+				return
+			}
+		}
+		if req.DatasetConfig.ChartType == "pie" {
+			if req.DatasetConfig.AggregationField == "" || req.DatasetConfig.AggregationValue == "" {
+				http.Error(w, "Pie charts require aggregation_field and aggregation_value", http.StatusBadRequest)
+				return
+			}
+			if req.DatasetConfig.AggregationOperator == "" {
+				req.DatasetConfig.AggregationOperator = "SUM" // Default
+			}
+			if req.DatasetConfig.AggregationOperator != "SUM" && req.DatasetConfig.AggregationOperator != "COUNT" {
+				http.Error(w, "Aggregation operator must be 'SUM' or 'COUNT'", http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
 	chart, err := h.repo.Create(&req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -107,6 +147,46 @@ func (h *ChartHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Name == "" {
 		http.Error(w, "Chart name is required", http.StatusBadRequest)
 		return
+	}
+
+	// Validate mutual exclusivity
+	hasDatasetConfig := req.DatasetConfig != nil
+	hasAccountsGroups := len(req.AccountIDs) > 0 || len(req.GroupIDs) > 0
+
+	if hasDatasetConfig && hasAccountsGroups {
+		http.Error(w, "Cannot specify both dataset config and accounts/groups", http.StatusBadRequest)
+		return
+	}
+
+	// Validate dataset config if provided
+	if hasDatasetConfig {
+		if req.DatasetConfig.DatasetID == 0 {
+			http.Error(w, "Dataset ID is required", http.StatusBadRequest)
+			return
+		}
+		if req.DatasetConfig.ChartType != "line" && req.DatasetConfig.ChartType != "pie" {
+			http.Error(w, "Chart type must be 'line' or 'pie'", http.StatusBadRequest)
+			return
+		}
+		if req.DatasetConfig.ChartType == "line" {
+			if req.DatasetConfig.XColumn == "" || len(req.DatasetConfig.YColumns) == 0 {
+				http.Error(w, "Line charts require x_column and y_columns", http.StatusBadRequest)
+				return
+			}
+		}
+		if req.DatasetConfig.ChartType == "pie" {
+			if req.DatasetConfig.AggregationField == "" || req.DatasetConfig.AggregationValue == "" {
+				http.Error(w, "Pie charts require aggregation_field and aggregation_value", http.StatusBadRequest)
+				return
+			}
+			if req.DatasetConfig.AggregationOperator == "" {
+				req.DatasetConfig.AggregationOperator = "SUM" // Default
+			}
+			if req.DatasetConfig.AggregationOperator != "SUM" && req.DatasetConfig.AggregationOperator != "COUNT" {
+				http.Error(w, "Aggregation operator must be 'SUM' or 'COUNT'", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	chart, err := h.repo.Update(id, &req)

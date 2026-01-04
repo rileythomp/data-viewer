@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { dashboardsApi, accountsApi, groupsApi } from '../services/api';
+import MultiSelectDropdown from './MultiSelectDropdown';
 
 export default function DashboardCreate() {
   const navigate = useNavigate();
@@ -118,40 +119,44 @@ export default function DashboardCreate() {
           {accounts.length > 0 && (
             <div className="form-group">
               <label>Accounts</label>
-              <div className="item-selection">
-                {accounts.map((account) => (
-                  <label key={account.id} className="item-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedAccounts.includes(account.id)}
-                      onChange={() => handleAccountToggle(account.id)}
-                    />
-                    <span className="item-checkbox-name">{account.account_name}</span>
-                  </label>
-                ))}
-              </div>
+              <MultiSelectDropdown
+                items={accounts}
+                selectedIds={selectedAccounts}
+                onChange={setSelectedAccounts}
+                placeholder="Select accounts..."
+                labelKey="account_name"
+              />
             </div>
           )}
 
           {groups.length > 0 && (
             <div className="form-group">
               <label>Groups</label>
-              <div className="item-selection">
-                {groups.map((group) => (
-                  <label key={group.id} className="item-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedGroups.includes(group.id)}
-                      onChange={() => handleGroupToggle(group.id)}
-                    />
+              <MultiSelectDropdown
+                items={groups}
+                selectedIds={selectedGroups}
+                onChange={setSelectedGroups}
+                placeholder="Select groups..."
+                labelKey="group_name"
+                renderOption={(group) => (
+                  <>
                     <div
                       className="group-color-dot"
                       style={{ backgroundColor: group.color }}
                     />
-                    <span className="item-checkbox-name">{group.group_name}</span>
-                  </label>
-                ))}
-              </div>
+                    <span>{group.group_name}</span>
+                  </>
+                )}
+                renderChip={(group) => (
+                  <>
+                    <div
+                      className="group-color-dot"
+                      style={{ backgroundColor: group.color }}
+                    />
+                    <span>{group.group_name}</span>
+                  </>
+                )}
+              />
             </div>
           )}
 
