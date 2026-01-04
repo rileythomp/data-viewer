@@ -53,8 +53,8 @@ export default function DatasetDetail() {
             const sourceIds = dataset?.sources?.map(s => s.source_id) || [];
             const available = (data.uploads || []).filter(u => !sourceIds.includes(u.id));
             setAvailableUploads(available);
-        } catch (err) {
-            console.error('Failed to fetch uploads:', err);
+        } catch {
+            // Silently ignore - not critical for the UI
         }
     };
 

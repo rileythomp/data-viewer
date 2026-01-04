@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"finance-tracker/internal/models"
 )
@@ -180,15 +179,12 @@ func (r *UploadRepository) GetData(id int, page, pageSize int) (*models.UploadDa
 }
 
 func (r *UploadRepository) Create(req *models.CreateUploadRequest) (*models.Upload, error) {
-	log.Printf("[UploadRepo.Create] Creating upload: name=%s, file=%s, columns=%v, dataRows=%d", req.Name, req.FileName, req.Columns, len(req.Data))
-
 	columnsJSON, err := json.Marshal(req.Columns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal columns: %w", err)
 	}
 
 	rowCount := len(req.Data)
-	log.Printf("[UploadRepo.Create] Row count: %d", rowCount)
 
 	// Start transaction for atomic insert
 	tx, err := r.db.Begin()
@@ -199,7 +195,6 @@ func (r *UploadRepository) Create(req *models.CreateUploadRequest) (*models.Uplo
 
 	// Insert upload metadata (without data blob)
 	// NOTE: The 'data' column is set to '[]' (empty) - data is stored in upload_rows table instead
-	log.Printf("[UploadRepo.Create] Inserting upload metadata with data='[]' (data will be stored in upload_rows table)")
 	query := `
 		INSERT INTO uploads (name, description, file_name, file_type, file_size, row_count, columns, data, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, '[]', 'completed')
@@ -226,7 +221,6 @@ func (r *UploadRepository) Create(req *models.CreateUploadRequest) (*models.Uplo
 	}
 
 	// Insert rows in batches to the normalized table
-	log.Printf("[UploadRepo.Create] Inserting %d rows into upload_rows table for upload ID %d", len(req.Data), u.ID)
 	for i := 0; i < len(req.Data); i += batchSize {
 		end := i + batchSize
 		if end > len(req.Data) {
@@ -253,7 +247,6 @@ func (r *UploadRepository) Create(req *models.CreateUploadRequest) (*models.Uplo
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	log.Printf("[UploadRepo.Create] Successfully created upload ID %d with %d rows in upload_rows table", u.ID, len(req.Data))
 	return &u, nil
 }
 

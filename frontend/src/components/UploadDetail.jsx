@@ -53,8 +53,8 @@ export default function UploadDetail() {
             setDatasetsLoading(true);
             const data = await uploadsApi.getDatasets(id);
             setContainingDatasets(data.datasets || []);
-        } catch (err) {
-            console.error('Failed to fetch containing datasets:', err);
+        } catch {
+            // Silently ignore - not critical for the UI
         } finally {
             setDatasetsLoading(false);
         }
@@ -67,8 +67,8 @@ export default function UploadDetail() {
             const containingIds = containingDatasets.map(d => d.id);
             const available = (data.datasets || []).filter(d => !containingIds.includes(d.id));
             setAvailableDatasets(available);
-        } catch (err) {
-            console.error('Failed to fetch datasets:', err);
+        } catch {
+            // Silently ignore - not critical for the UI
         }
     };
 
