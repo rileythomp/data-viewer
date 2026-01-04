@@ -3049,6 +3049,7 @@ select.account-select {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -3257,6 +3258,11 @@ select.account-select {
   position: relative;
 }
 
+/* Multi-cell range selection highlighting */
+.spreadsheet-cell-in-selection {
+  background-color: var(--color-primary-light, rgba(59, 130, 246, 0.15)) !important;
+}
+
 /* Fill Preview Highlighting */
 .spreadsheet-cell-fill-preview {
   background-color: var(--color-primary-light, rgba(59, 130, 246, 0.1)) !important;
@@ -3271,5 +3277,14 @@ select.account-select {
 
 .spreadsheet-container.is-filling .spreadsheet-cell {
   cursor: crosshair;
+  user-select: none;
+}
+
+/* Disable text selection during range selection */
+.spreadsheet-container.is-selecting {
+  user-select: none;
+}
+
+.spreadsheet-container.is-selecting .spreadsheet-cell {
   user-select: none;
 }

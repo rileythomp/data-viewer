@@ -84,7 +84,7 @@ function adjustFormulaReferences(formula, colOffset, rowOffset) {
 
     // Bounds checking
     if (newColIndex < 0 || newColIndex >= NUM_COLS ||
-        newRowIndex < 0 || newRowIndex >= NUM_ROWS) {
+      newRowIndex < 0 || newRowIndex >= NUM_ROWS) {
       return '#REF!';
     }
 
@@ -370,6 +370,12 @@ export default function SpreadsheetPage() {
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef(null);
   const formulaInputRef = useRef(null);
+  const containerRef = useRef(null);
+
+  // Range selection state
+  const [selectionStart, setSelectionStart] = useState(null); // Anchor cell for range selection
+  const [selectionEnd, setSelectionEnd] = useState(null); // End cell for range selection
+  const [isSelecting, setIsSelecting] = useState(false); // Currently dragging to select
 
   // Drag-to-fill state
   const [isDraggingFill, setIsDraggingFill] = useState(false);
@@ -434,13 +440,65 @@ export default function SpreadsheetPage() {
     });
   }, [recalculateCell]);
 
-  const handleCellClick = useCallback((cellId) => {
+  const handleCellClick = useCallback((cellId, e) => {
     if (editingCell && editingCell !== cellId) {
       updateCell(editingCell, editValue);
       setEditingCell(null);
     }
+
+    // Shift+click to extend selection
+    if (e?.shiftKey && selectedCell) {
+      setSelectionStart(selectedCell);
+      setSelectionEnd(cellId);
+    } else {
+      // Regular click - single cell selection
+      setSelectedCell(cellId);
+      setSelectionStart(null);
+      setSelectionEnd(null);
+    }
+  }, [editingCell, editValue, updateCell, selectedCell]);
+
+  // Handle mouse down for drag selection
+  const handleCellMouseDown = useCallback((cellId, e) => {
+    // Don't start selection if shift is held (handled by click)
+    if (e.shiftKey) return;
+
+    // Prevent text selection during drag
+    e.preventDefault();
+
+    // Maintain focus on container for keyboard events
+    containerRef.current?.focus();
+
+    // Commit any pending edit
+    if (editingCell && editingCell !== cellId) {
+      updateCell(editingCell, editValue);
+      setEditingCell(null);
+    }
+
     setSelectedCell(cellId);
+    setSelectionStart(cellId);
+    setSelectionEnd(cellId);
+    setIsSelecting(true);
   }, [editingCell, editValue, updateCell]);
+
+  // Handle mouse enter during drag selection
+  const handleCellMouseEnter = useCallback((cellId) => {
+    if (isSelecting && selectionStart) {
+      setSelectionEnd(cellId);
+    }
+  }, [isSelecting, selectionStart]);
+
+  // Handle mouse up to finish selection
+  useEffect(() => {
+    const handleMouseUp = () => {
+      if (isSelecting) {
+        setIsSelecting(false);
+      }
+    };
+
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [isSelecting]);
 
   const handleCellDoubleClick = useCallback((cellId) => {
     setEditingCell(cellId);
@@ -482,7 +540,63 @@ export default function SpreadsheetPage() {
       commitEdit();
     }
     setSelectedCell(newCellId);
+    // Clear range selection when moving with arrows
+    setSelectionStart(null);
+    setSelectionEnd(null);
   }, [selectedCell, editingCell, commitEdit]);
+
+  // Get all cells in the current selection (single cell or range)
+  const getSelectedCells = useCallback(() => {
+    if (selectionStart && selectionEnd) {
+      return expandRange(selectionStart, selectionEnd);
+    }
+    return [selectedCell];
+  }, [selectedCell, selectionStart, selectionEnd]);
+
+  // Check if a cell is within the current selection range
+  const isCellInSelection = useCallback((cellId) => {
+    if (!selectionStart || !selectionEnd) return false;
+    const selectedCells = expandRange(selectionStart, selectionEnd);
+    return selectedCells.includes(cellId);
+  }, [selectionStart, selectionEnd]);
+
+  // Batch delete multiple cells
+  const deleteSelectedCells = useCallback(() => {
+    const cellsToDelete = getSelectedCells();
+    if (cellsToDelete.length === 1) {
+      updateCell(cellsToDelete[0], '');
+    } else {
+      // Batch update for better performance
+      setCells(prevCells => {
+        const newCells = { ...prevCells };
+
+        // First, clear all selected cells
+        for (const cellId of cellsToDelete) {
+          newCells[cellId] = { rawValue: '', computedValue: '', error: null };
+        }
+
+        // Collect all cells that need recalculation
+        const allAffected = new Set();
+        for (const cellId of cellsToDelete) {
+          const affected = getRecalculationOrder(cellId, newCells);
+          for (const affectedId of affected) {
+            if (!cellsToDelete.includes(affectedId)) {
+              allAffected.add(affectedId);
+            }
+          }
+        }
+
+        // Recalculate affected cells
+        for (const recalcId of allAffected) {
+          if (newCells[recalcId] && newCells[recalcId].rawValue) {
+            newCells[recalcId] = recalculateCell(recalcId, newCells[recalcId].rawValue, newCells);
+          }
+        }
+
+        return newCells;
+      });
+    }
+  }, [getSelectedCells, updateCell, recalculateCell]);
 
   const handleKeyDown = useCallback((e) => {
     if (editingCell) {
@@ -519,13 +633,13 @@ export default function SpreadsheetPage() {
         moveSelection(e.shiftKey ? -1 : 1, 0);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        updateCell(selectedCell, '');
+        deleteSelectedCells();
       } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         startEditing(selectedCell, e.key);
       }
     }
-  }, [editingCell, selectedCell, commitEdit, cancelEdit, moveSelection, startEditing, updateCell]);
+  }, [editingCell, selectedCell, commitEdit, cancelEdit, moveSelection, startEditing, deleteSelectedCells]);
 
   useEffect(() => {
     if (editingCell && inputRef.current) {
@@ -647,7 +761,7 @@ export default function SpreadsheetPage() {
         if (!el) continue;
         const rect = el.getBoundingClientRect();
         const isInside = e.clientX >= rect.left && e.clientX <= rect.right &&
-                        e.clientY >= rect.top && e.clientY <= rect.bottom;
+          e.clientY >= rect.top && e.clientY <= rect.bottom;
 
         if (isInside) {
           const targetCoords = parseCellAddress(cellId);
@@ -707,7 +821,7 @@ export default function SpreadsheetPage() {
   const rows = Array.from({ length: NUM_ROWS }, (_, i) => i + 1);
 
   return (
-    <div className="app app-full-width" onKeyDown={handleKeyDown} tabIndex={0}>
+    <div ref={containerRef} className="app app-full-width" onKeyDown={handleKeyDown} tabIndex={0}>
       <div className="spreadsheet-formula-bar">
         <span className="spreadsheet-cell-address">{selectedCell}</span>
         <input
@@ -722,7 +836,7 @@ export default function SpreadsheetPage() {
         />
       </div>
 
-      <div className={`spreadsheet-container${isDraggingFill ? ' is-filling' : ''}`}>
+      <div className={`spreadsheet-container${isDraggingFill ? ' is-filling' : ''}${isSelecting ? ' is-selecting' : ''}`}>
         <table className="spreadsheet-grid">
           <thead>
             <tr>
@@ -743,6 +857,7 @@ export default function SpreadsheetPage() {
                   const isSelected = cellId === selectedCell;
                   const isEditing = cellId === editingCell;
                   const isFillPreview = fillPreviewCells.includes(cellId);
+                  const isInSelection = isCellInSelection(cellId);
                   const cell = cells[cellId];
                   const hasError = cell?.error;
 
@@ -750,8 +865,10 @@ export default function SpreadsheetPage() {
                     <td
                       key={cellId}
                       ref={(el) => { cellRefs.current[cellId] = el; }}
-                      className={`spreadsheet-cell${isSelected ? ' spreadsheet-cell-selected' : ''}${hasError ? ' spreadsheet-cell-error' : ''}${isEditing ? ' spreadsheet-cell-editing' : ''}${isFillPreview ? ' spreadsheet-cell-fill-preview' : ''}`}
-                      onClick={() => handleCellClick(cellId)}
+                      className={`spreadsheet-cell${isSelected ? ' spreadsheet-cell-selected' : ''}${isInSelection ? ' spreadsheet-cell-in-selection' : ''}${hasError ? ' spreadsheet-cell-error' : ''}${isEditing ? ' spreadsheet-cell-editing' : ''}${isFillPreview ? ' spreadsheet-cell-fill-preview' : ''}`}
+                      onClick={(e) => handleCellClick(cellId, e)}
+                      onMouseDown={(e) => handleCellMouseDown(cellId, e)}
+                      onMouseEnter={() => handleCellMouseEnter(cellId)}
                       onDoubleClick={() => handleCellDoubleClick(cellId)}
                     >
                       {isEditing ? (
