@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"finance-tracker/internal/config"
 	"finance-tracker/internal/database"
@@ -18,6 +19,15 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
+
+	// Run migrations
+	migrationsPath := os.Getenv("MIGRATIONS_PATH")
+	if migrationsPath == "" {
+		migrationsPath = "./migrations"
+	}
+	if err := database.RunMigrations(db, migrationsPath); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
 
 	r := router.New(db)
 	c := router.WithCORS(r)
