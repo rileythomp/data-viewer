@@ -41,13 +41,13 @@ export default function DatasetLineChartView({ data }) {
   return (
     <div className="balance-chart-container">
       <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 30, bottom: 60 }}>
+        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
           <XAxis
             dataKey="x"
             tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
             tickLine={{ stroke: 'var(--color-border)' }}
             axisLine={{ stroke: 'var(--color-border)' }}
-            label={{ value: data.x_column, position: 'bottom', offset: 20, fill: 'var(--color-text-secondary)', fontSize: 13 }}
+            label={{ value: data.x_column, position: 'insideBottom', offset: -10, fill: 'var(--color-text-secondary)', fontSize: 13, fontWeight: 500 }}
           />
           <YAxis
             tickFormatter={formatValue}
@@ -55,10 +55,10 @@ export default function DatasetLineChartView({ data }) {
             tickLine={{ stroke: 'var(--color-border)' }}
             axisLine={{ stroke: 'var(--color-border)' }}
             width={100}
-            label={data.series.length === 1 ? { value: data.series[0].column, angle: -90, position: 'insideLeft', offset: 10, fill: 'var(--color-text-secondary)', fontSize: 13 } : undefined}
+            label={data.series.length === 1 ? { value: data.series[0].column, angle: -90, position: 'insideLeft', dx: 25, fill: 'var(--color-text-secondary)', fontSize: 13, fontWeight: 500 } : undefined}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend verticalAlign="bottom" wrapperStyle={{ paddingTop: 30 }} />
+          <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: 25 }} />
           {data.series.map((series) => (
             <Line
               key={series.column}
