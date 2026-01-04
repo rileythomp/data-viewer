@@ -457,6 +457,12 @@ export const uploadsApi = {
     if (!res.ok) throw new Error('Failed to delete upload');
     return res.json();
   },
+
+  getDatasets: async (id) => {
+    const res = await fetch(`${API_BASE}/uploads/${id}/datasets`);
+    if (!res.ok) throw new Error('Failed to fetch datasets for upload');
+    return res.json();
+  },
 };
 
 export const datasetsApi = {

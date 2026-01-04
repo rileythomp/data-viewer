@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"finance-tracker/internal/models"
@@ -237,21 +238,65 @@ func (r *DatasetRepository) RemoveSource(datasetID, sourceID int) error {
 	return r.BuildDataset(datasetID)
 }
 
+// DatasetWithSourceInfo includes the source junction table ID for removal operations
+type DatasetWithSourceInfo struct {
+	models.Dataset
+	SourceJunctionID int `json:"source_junction_id"`
+}
+
+// GetBySourceUploadID returns all datasets that contain the specified upload as a source
+func (r *DatasetRepository) GetBySourceUploadID(uploadID int) ([]DatasetWithSourceInfo, error) {
+	query := `
+		SELECT d.id, d.name, d.description, d.row_count, d.status,
+		       COALESCE(d.error_message, ''), d.created_at, d.updated_at, ds.id as source_junction_id
+		FROM datasets d
+		INNER JOIN dataset_sources ds ON d.id = ds.dataset_id
+		WHERE ds.source_type = 'upload' AND ds.source_id = $1
+		ORDER BY d.name
+	`
+	rows, err := r.db.Query(query, uploadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query datasets by source: %w", err)
+	}
+	defer rows.Close()
+
+	var datasets []DatasetWithSourceInfo
+	for rows.Next() {
+		var d DatasetWithSourceInfo
+		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.RowCount, &d.Status,
+			&d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt, &d.SourceJunctionID); err != nil {
+			return nil, fmt.Errorf("failed to scan dataset: %w", err)
+		}
+		datasets = append(datasets, d)
+	}
+	return datasets, nil
+}
+
 func (r *DatasetRepository) BuildDataset(id int) error {
+	// Get dataset name for logging
+	var datasetName string
+	r.db.QueryRow("SELECT name FROM datasets WHERE id = $1", id).Scan(&datasetName)
+	log.Printf("[BuildDataset] Starting build for dataset '%s' (ID: %d)", datasetName, id)
+
 	// Set status to building
 	_, err := r.db.Exec("UPDATE datasets SET status = 'building', error_message = NULL, updated_at = NOW() WHERE id = $1", id)
 	if err != nil {
+		log.Printf("[BuildDataset] ERROR: Failed to update status for dataset '%s': %v", datasetName, err)
 		return fmt.Errorf("failed to update status: %w", err)
 	}
 
 	// Get sources
 	sources, err := r.getSources(id)
 	if err != nil {
+		log.Printf("[BuildDataset] ERROR: Failed to get sources for dataset '%s': %v", datasetName, err)
 		r.setError(id, err.Error())
 		return err
 	}
 
+	log.Printf("[BuildDataset] Found %d sources for dataset '%s'", len(sources), datasetName)
+
 	if len(sources) == 0 {
+		log.Printf("[BuildDataset] No sources found, marking dataset '%s' as ready with 0 rows", datasetName)
 		// No sources, mark as ready with 0 rows
 		_, err = r.db.Exec("UPDATE datasets SET status = 'ready', row_count = 0, updated_at = NOW() WHERE id = $1", id)
 		if err != nil {
@@ -268,13 +313,16 @@ func (r *DatasetRepository) BuildDataset(id int) error {
 		var columnsJSON []byte
 		err = r.db.QueryRow("SELECT columns FROM uploads WHERE id = $1", sources[0].SourceID).Scan(&columnsJSON)
 		if err != nil {
+			log.Printf("[BuildDataset] ERROR: Failed to get columns from source upload '%s': %v", sources[0].SourceName, err)
 			r.setError(id, "failed to get columns from source upload")
 			return fmt.Errorf("failed to get columns from source: %w", err)
 		}
 		json.Unmarshal(columnsJSON, &firstColumns)
+		log.Printf("[BuildDataset] Got %d columns from source upload '%s': %v", len(firstColumns), sources[0].SourceName, firstColumns)
 	}
 
 	if len(firstColumns) == 0 {
+		log.Printf("[BuildDataset] ERROR: Source has no columns for dataset '%s'", datasetName)
 		r.setError(id, "source has no columns")
 		return fmt.Errorf("source has no columns")
 	}
@@ -328,16 +376,65 @@ func (r *DatasetRepository) BuildDataset(id int) error {
 	totalRows := 0
 	for _, source := range sources {
 		if source.SourceType == "upload" {
-			var dataJSON []byte
-			err = r.db.QueryRow("SELECT data FROM uploads WHERE id = $1", source.SourceID).Scan(&dataJSON)
+			log.Printf("[BuildDataset] Processing source upload '%s' (ID: %d)", source.SourceName, source.SourceID)
+
+			// Check if data exists in the normalized upload_rows table
+			var normalizedCount int
+			err = r.db.QueryRow("SELECT COUNT(*) FROM upload_rows WHERE upload_id = $1", source.SourceID).Scan(&normalizedCount)
 			if err != nil {
+				log.Printf("[BuildDataset] ERROR: Failed to count upload_rows for upload '%s': %v", source.SourceName, err)
 				continue
 			}
-			var data [][]any
-			json.Unmarshal(dataJSON, &data)
 
-			// Insert rows
-			for _, row := range data {
+			log.Printf("[BuildDataset] Found %d rows in upload_rows for upload '%s'", normalizedCount, source.SourceName)
+
+			var sourceRows [][]any
+
+			if normalizedCount > 0 {
+				// Read from normalized upload_rows table
+				rows, err := r.db.Query("SELECT data FROM upload_rows WHERE upload_id = $1 ORDER BY row_index", source.SourceID)
+				if err != nil {
+					log.Printf("[BuildDataset] ERROR: Failed to query upload_rows for upload '%s': %v", source.SourceName, err)
+					continue
+				}
+
+				for rows.Next() {
+					var rowJSON []byte
+					if err := rows.Scan(&rowJSON); err != nil {
+						log.Printf("[BuildDataset] ERROR: Failed to scan row from upload_rows: %v", err)
+						continue
+					}
+
+					var row []any
+					if err := json.Unmarshal(rowJSON, &row); err != nil {
+						log.Printf("[BuildDataset] ERROR: Failed to unmarshal row data: %v", err)
+						continue
+					}
+					sourceRows = append(sourceRows, row)
+				}
+				rows.Close()
+			} else {
+				// Fallback: read from legacy data JSONB column
+				log.Printf("[BuildDataset] No rows in upload_rows, falling back to legacy data column for upload '%s'", source.SourceName)
+				var dataJSON []byte
+				err = r.db.QueryRow("SELECT data FROM uploads WHERE id = $1", source.SourceID).Scan(&dataJSON)
+				if err != nil {
+					log.Printf("[BuildDataset] ERROR: Failed to get legacy data for upload '%s': %v", source.SourceName, err)
+					continue
+				}
+
+				if len(dataJSON) > 0 {
+					if err := json.Unmarshal(dataJSON, &sourceRows); err != nil {
+						log.Printf("[BuildDataset] ERROR: Failed to unmarshal legacy data for upload '%s': %v", source.SourceName, err)
+						continue
+					}
+				}
+				log.Printf("[BuildDataset] Found %d rows in legacy data column for upload '%s'", len(sourceRows), source.SourceName)
+			}
+
+			// Insert all rows from this source
+			rowCount := 0
+			for _, row := range sourceRows {
 				// Build insert statement
 				safeColNames := make([]string, len(firstColumns))
 				placeholders := make([]string, len(firstColumns))
@@ -358,20 +455,26 @@ func (r *DatasetRepository) BuildDataset(id int) error {
 				)
 				_, err = r.db.Exec(insertSQL, values...)
 				if err != nil {
-					// Log but continue
+					log.Printf("[BuildDataset] ERROR: Failed to insert row into dataset table: %v", err)
 					continue
 				}
 				totalRows++
+				rowCount++
 			}
+
+			log.Printf("[BuildDataset] Inserted %d rows from upload '%s', %d total rows so far for dataset '%s'", rowCount, source.SourceName, totalRows, datasetName)
 		}
 	}
 
 	// Update dataset with row count and status
+	log.Printf("[BuildDataset] Build complete for dataset '%s'. Total rows inserted: %d", datasetName, totalRows)
 	_, err = r.db.Exec("UPDATE datasets SET status = 'ready', row_count = $1, updated_at = NOW() WHERE id = $2", totalRows, id)
 	if err != nil {
+		log.Printf("[BuildDataset] ERROR: Failed to update dataset '%s' status: %v", datasetName, err)
 		return fmt.Errorf("failed to update dataset status: %w", err)
 	}
 
+	log.Printf("[BuildDataset] Dataset '%s' marked as ready with %d rows", datasetName, totalRows)
 	return nil
 }
 
