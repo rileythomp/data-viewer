@@ -1,0 +1,42 @@
+[
+  {
+    "id": 6,
+    "name": "Frank Lee",
+    "email": "frank@example.com",
+    "age": 42,
+    "city": "Philadelphia",
+    "active": true
+  },
+  {
+    "id": 7,
+    "name": "Grace Kim",
+    "email": "grace@example.com",
+    "age": 27,
+    "city": "San Antonio",
+    "active": true
+  },
+  {
+    "id": 8,
+    "name": "Henry Chen",
+    "email": "henry@example.com",
+    "age": 38,
+    "city": "San Diego",
+    "active": false
+  },
+  {
+    "id": 9,
+    "name": "Ivy Patel",
+    "email": "ivy@example.com",
+    "age": 33,
+    "city": "Dallas",
+    "active": true
+  },
+  {
+    "id": 10,
+    "name": "Jack Wilson",
+    "email": "jack@example.com",
+    "age": 51,
+    "city": "San Jose",
+    "active": false
+  }
+]

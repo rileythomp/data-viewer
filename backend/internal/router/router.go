@@ -93,6 +93,7 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/uploads/{id}", uploadHandler.GetByID).Methods("GET")
 	api.HandleFunc("/uploads/{id}", uploadHandler.Delete).Methods("DELETE")
 	api.HandleFunc("/uploads/{id}/data", uploadHandler.GetData).Methods("GET")
+	api.HandleFunc("/uploads/{id}/datasets", datasetHandler.GetBySourceUploadID).Methods("GET")
 
 	// Dataset routes
 	api.HandleFunc("/datasets", datasetHandler.GetAll).Methods("GET")

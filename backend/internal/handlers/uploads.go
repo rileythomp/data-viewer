@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -278,6 +279,17 @@ func (h *UploadHandler) streamParseCSV(uploadID int, content []byte) ([]string, 
 		return nil, 0, err
 	}
 
+	// Create sorted column order for consistent ordering across file types
+	sortedHeaders := make([]string, len(headers))
+	copy(sortedHeaders, headers)
+	sort.Strings(sortedHeaders)
+
+	// Build index mapping from sorted position to original position
+	originalIndex := make(map[string]int)
+	for i, h := range headers {
+		originalIndex[h] = i
+	}
+
 	var batch [][]any
 	rowIndex := 0
 
@@ -290,10 +302,10 @@ func (h *UploadHandler) streamParseCSV(uploadID int, content []byte) ([]string, 
 			return nil, 0, err
 		}
 
-		// Convert string slice to any slice
+		// Convert and reorder to match sorted column order
 		row := make([]any, len(record))
-		for i, v := range record {
-			row[i] = v
+		for i, col := range sortedHeaders {
+			row[i] = record[originalIndex[col]]
 		}
 		batch = append(batch, row)
 
@@ -315,7 +327,7 @@ func (h *UploadHandler) streamParseCSV(uploadID int, content []byte) ([]string, 
 		rowIndex += len(batch)
 	}
 
-	return headers, rowIndex, nil
+	return sortedHeaders, rowIndex, nil
 }
 
 // streamParseJSON parses JSON content and inserts rows in batches
@@ -335,11 +347,12 @@ func (h *UploadHandler) streamParseJSON(uploadID int, content []byte) ([]string,
 		return []string{}, 0, nil
 	}
 
-	// Extract column names from first object
+	// Extract column names from first object and sort for consistent ordering
 	var columns []string
 	for key := range objects[0] {
 		columns = append(columns, key)
 	}
+	sort.Strings(columns)
 
 	var batch [][]any
 	rowIndex := 0
@@ -403,6 +416,17 @@ func parseCSV(content []byte) ([]string, [][]any, error) {
 		return nil, nil, err
 	}
 
+	// Create sorted column order for consistent ordering across file types
+	sortedHeaders := make([]string, len(headers))
+	copy(sortedHeaders, headers)
+	sort.Strings(sortedHeaders)
+
+	// Build index mapping from sorted position to original position
+	originalIndex := make(map[string]int)
+	for i, h := range headers {
+		originalIndex[h] = i
+	}
+
 	// Read all data rows
 	var data [][]any
 	for {
@@ -414,15 +438,15 @@ func parseCSV(content []byte) ([]string, [][]any, error) {
 			return nil, nil, err
 		}
 
-		// Convert string slice to any slice
+		// Convert and reorder to match sorted column order
 		row := make([]any, len(record))
-		for i, v := range record {
-			row[i] = v
+		for i, col := range sortedHeaders {
+			row[i] = record[originalIndex[col]]
 		}
 		data = append(data, row)
 	}
 
-	return headers, data, nil
+	return sortedHeaders, data, nil
 }
 
 func parseJSON(content []byte) ([]string, [][]any, error) {
@@ -441,11 +465,12 @@ func parseJSON(content []byte) ([]string, [][]any, error) {
 		return []string{}, [][]any{}, nil
 	}
 
-	// Extract column names from first object
+	// Extract column names from first object and sort for consistent ordering
 	var columns []string
 	for key := range objects[0] {
 		columns = append(columns, key)
 	}
+	sort.Strings(columns)
 
 	// Convert objects to rows
 	var data [][]any
