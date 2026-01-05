@@ -821,6 +821,11 @@ export default function SpreadsheetPage() {
     };
   }, [isDraggingFill, fillDragStart, fillDragDirection, fillPreviewCells, applyFill]);
 
+  // Focus the container on mount so keyboard input is captured immediately
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, []);
+
   const columns = Array.from({ length: NUM_COLS }, (_, i) => columnIndexToLetter(i));
   const rows = Array.from({ length: NUM_ROWS }, (_, i) => i + 1);
 
