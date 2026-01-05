@@ -371,6 +371,7 @@ export default function SpreadsheetPage() {
   const inputRef = useRef(null);
   const formulaInputRef = useRef(null);
   const containerRef = useRef(null);
+  const shouldSelectOnEdit = useRef(false);
 
   // Range selection state
   const [selectionStart, setSelectionStart] = useState(null); // Anchor cell for range selection
@@ -501,12 +502,16 @@ export default function SpreadsheetPage() {
   }, [isSelecting]);
 
   const handleCellDoubleClick = useCallback((cellId) => {
+    shouldSelectOnEdit.current = true;
     setEditingCell(cellId);
     const cell = cells[cellId];
     setEditValue(cell?.rawValue ?? '');
   }, [cells]);
 
   const startEditing = useCallback((cellId, initialValue = '') => {
+    // If starting with an initial character, don't select content
+    // If starting via Enter/double-click (no initialValue), select content
+    shouldSelectOnEdit.current = !initialValue;
     setEditingCell(cellId);
     const cell = cells[cellId];
     if (initialValue) {
@@ -648,7 +653,13 @@ export default function SpreadsheetPage() {
   useEffect(() => {
     if (editingCell && inputRef.current) {
       inputRef.current.focus();
-      inputRef.current.select();
+      if (shouldSelectOnEdit.current) {
+        inputRef.current.select();
+      } else {
+        // Place cursor at end of input
+        const len = inputRef.current.value.length;
+        inputRef.current.setSelectionRange(len, len);
+      }
     }
   }, [editingCell]);
 
