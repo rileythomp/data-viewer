@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, ChevronLeft, ChevronRight, FileSpreadsheet, FileJson, Loader, AlertCircle } from 'lucide-react';
-import { uploadsApi } from '../services/api';
+import { ArrowLeft, Trash2, ChevronLeft, ChevronRight, FileSpreadsheet, FileJson, Loader, AlertCircle, Database, Plus, X } from 'lucide-react';
+import { uploadsApi, datasetsApi } from '../services/api';
 
 export default function UploadDetail() {
     const { id } = useParams();
@@ -14,6 +14,13 @@ export default function UploadDetail() {
     const [page, setPage] = useState(1);
     const [viewMode, setViewMode] = useState('table');
     const pageSize = 50;
+
+    // Datasets state
+    const [containingDatasets, setContainingDatasets] = useState([]);
+    const [showAddToDataset, setShowAddToDataset] = useState(false);
+    const [availableDatasets, setAvailableDatasets] = useState([]);
+    const [addingToDataset, setAddingToDataset] = useState(false);
+    const [datasetsLoading, setDatasetsLoading] = useState(false);
 
     const fetchUpload = async () => {
         try {
@@ -41,6 +48,55 @@ export default function UploadDetail() {
         }
     };
 
+    const fetchContainingDatasets = async () => {
+        try {
+            setDatasetsLoading(true);
+            const data = await uploadsApi.getDatasets(id);
+            setContainingDatasets(data.datasets || []);
+        } catch {
+            // Silently ignore - not critical for the UI
+        } finally {
+            setDatasetsLoading(false);
+        }
+    };
+
+    const fetchAvailableDatasets = async () => {
+        try {
+            const data = await datasetsApi.getAll(1, 100);
+            // Filter out datasets that already contain this upload
+            const containingIds = containingDatasets.map(d => d.id);
+            const available = (data.datasets || []).filter(d => !containingIds.includes(d.id));
+            setAvailableDatasets(available);
+        } catch {
+            // Silently ignore - not critical for the UI
+        }
+    };
+
+    const handleAddToDataset = async (datasetId) => {
+        try {
+            setAddingToDataset(true);
+            await datasetsApi.addSource(datasetId, 'upload', parseInt(id));
+            await fetchContainingDatasets();
+            setShowAddToDataset(false);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setAddingToDataset(false);
+        }
+    };
+
+    const handleRemoveFromDataset = async (datasetId, sourceJunctionId) => {
+        if (!window.confirm('Are you sure you want to remove this upload from the dataset? The dataset will be rebuilt.')) {
+            return;
+        }
+        try {
+            await datasetsApi.removeSource(datasetId, sourceJunctionId);
+            await fetchContainingDatasets();
+        } catch (err) {
+            setError(err.message);
+        }
+    };
+
     useEffect(() => {
         fetchUpload();
     }, [id]);
@@ -64,6 +120,20 @@ export default function UploadDetail() {
             fetchData();
         }
     }, [upload, page]);
+
+    // Fetch datasets containing this upload
+    useEffect(() => {
+        if (upload && upload.status === 'completed') {
+            fetchContainingDatasets();
+        }
+    }, [upload]);
+
+    // Fetch available datasets when panel is opened
+    useEffect(() => {
+        if (showAddToDataset) {
+            fetchAvailableDatasets();
+        }
+    }, [showAddToDataset, containingDatasets]);
 
     const handleDelete = async () => {
         if (window.confirm(`Are you sure you want to delete "${upload.name}"?`)) {
@@ -225,6 +295,85 @@ export default function UploadDetail() {
                     <span className="upload-metadata-value">{formatDate(upload.created_at)}</span>
                 </div>
             </div>
+
+            {/* Datasets Section - only show for completed uploads */}
+            {upload.status === 'completed' && (
+                <div className="dataset-sources-section">
+                    <div className="section-header">
+                        <h2>Datasets</h2>
+                        <button
+                            onClick={() => setShowAddToDataset(!showAddToDataset)}
+                            className="btn-secondary btn-small"
+                        >
+                            {showAddToDataset ? <X size={14} /> : <Plus size={14} />}
+                            {showAddToDataset ? 'Cancel' : 'Add to Dataset'}
+                        </button>
+                    </div>
+
+                    {showAddToDataset && (
+                        <div className="add-source-panel">
+                            {availableDatasets.length === 0 ? (
+                                <p className="empty-state-inline">
+                                    No datasets available. Create a dataset first.
+                                </p>
+                            ) : (
+                                <div className="available-sources-list">
+                                    {availableDatasets.map((dataset) => (
+                                        <div
+                                            key={dataset.id}
+                                            className="available-source-item"
+                                            onClick={() => !addingToDataset && handleAddToDataset(dataset.id)}
+                                        >
+                                            <div className="source-item-icon">
+                                                <Database size={16} />
+                                            </div>
+                                            <span className="source-item-name">{dataset.name}</span>
+                                            <span className="source-item-meta">
+                                                {dataset.row_count} rows
+                                            </span>
+                                            <Plus size={14} className="add-icon" />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {datasetsLoading ? (
+                        <div className="loading-inline">Loading datasets...</div>
+                    ) : containingDatasets.length > 0 ? (
+                        <div className="sources-list">
+                            {containingDatasets.map((dataset) => (
+                                <div key={dataset.id} className="source-list-item">
+                                    <div
+                                        className="source-item-clickable"
+                                        onClick={() => navigate(`/datasets/${dataset.id}`)}
+                                    >
+                                        <div className="source-item-icon">
+                                            <Database size={16} />
+                                        </div>
+                                        <span className="source-item-name">{dataset.name}</span>
+                                        <span className="dataset-status-badge">
+                                            {dataset.status}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => handleRemoveFromDataset(dataset.id, dataset.source_junction_id)}
+                                        className="btn-icon-small btn-icon-danger"
+                                        title="Remove from dataset"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="empty-state-inline">
+                            This upload is not part of any dataset.
+                        </p>
+                    )}
+                </div>
+            )}
 
             {error && <div className="error">{error}</div>}
 

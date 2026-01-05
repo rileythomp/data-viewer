@@ -30,7 +30,7 @@ func (r *UploadRepository) GetAll(page, pageSize int) (*models.UploadListRespons
 	offset := (page - 1) * pageSize
 	query := `
 		SELECT id, name, description, file_name, file_type, file_size, row_count, columns,
-		       COALESCE(status, 'completed') as status, COALESCE(error_message, '') as error_message,
+		       status, COALESCE(error_message, '') as error_message,
 		       created_at, updated_at
 		FROM uploads
 		ORDER BY created_at DESC
@@ -66,7 +66,7 @@ func (r *UploadRepository) GetAll(page, pageSize int) (*models.UploadListRespons
 func (r *UploadRepository) GetByID(id int) (*models.Upload, error) {
 	query := `
 		SELECT id, name, description, file_name, file_type, file_size, row_count, columns,
-		       COALESCE(status, 'completed') as status, COALESCE(error_message, '') as error_message,
+		       status, COALESCE(error_message, '') as error_message,
 		       created_at, updated_at
 		FROM uploads
 		WHERE id = $1
@@ -98,81 +98,43 @@ func (r *UploadRepository) GetData(id int, page, pageSize int) (*models.UploadDa
 
 	offset := (page - 1) * pageSize
 
-	// Check if data exists in the normalized upload_rows table
-	var normalizedCount int
-	err = r.db.QueryRow("SELECT COUNT(*) FROM upload_rows WHERE upload_id = $1", id).Scan(&normalizedCount)
+	// Get total row count
+	var totalCount int
+	err = r.db.QueryRow("SELECT COUNT(*) FROM upload_rows WHERE upload_id = $1", id).Scan(&totalCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count upload rows: %w", err)
 	}
 
-	if normalizedCount > 0 {
-		// Use database-level pagination from upload_rows
-		query := `
-			SELECT data FROM upload_rows
-			WHERE upload_id = $1
-			ORDER BY row_index
-			LIMIT $2 OFFSET $3
-		`
-		rows, err := r.db.Query(query, id, pageSize, offset)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get upload rows: %w", err)
-		}
-		defer rows.Close()
-
-		var paginatedData [][]any
-		for rows.Next() {
-			var dataJSON []byte
-			if err := rows.Scan(&dataJSON); err != nil {
-				return nil, fmt.Errorf("failed to scan upload row: %w", err)
-			}
-			var rowData []any
-			if len(dataJSON) > 0 {
-				json.Unmarshal(dataJSON, &rowData)
-			}
-			paginatedData = append(paginatedData, rowData)
-		}
-
-		return &models.UploadDataResponse{
-			Columns:  upload.Columns,
-			Data:     paginatedData,
-			Total:    normalizedCount,
-			Page:     page,
-			PageSize: pageSize,
-		}, nil
-	}
-
-	// Fallback: read from legacy data JSONB column (for backwards compatibility)
+	// Use database-level pagination from upload_rows
 	query := `
-		SELECT data
-		FROM uploads
-		WHERE id = $1
+		SELECT data FROM upload_rows
+		WHERE upload_id = $1
+		ORDER BY row_index
+		LIMIT $2 OFFSET $3
 	`
-	var dataJSON []byte
-	err = r.db.QueryRow(query, id).Scan(&dataJSON)
+	rows, err := r.db.Query(query, id, pageSize, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get upload data: %w", err)
+		return nil, fmt.Errorf("failed to get upload rows: %w", err)
 	}
+	defer rows.Close()
 
-	var allData [][]any
-	if len(dataJSON) > 0 {
-		json.Unmarshal(dataJSON, &allData)
-	}
-
-	// Calculate pagination
-	total := len(allData)
-	end := offset + pageSize
-	if end > total {
-		end = total
-	}
 	var paginatedData [][]any
-	if offset < total {
-		paginatedData = allData[offset:end]
+	for rows.Next() {
+		var dataJSON []byte
+		if err := rows.Scan(&dataJSON); err != nil {
+			return nil, fmt.Errorf("failed to scan upload row: %w", err)
+		}
+		var rowData []any
+		if len(dataJSON) > 0 {
+			json.Unmarshal(dataJSON, &rowData)
+		}
+		paginatedData = append(paginatedData, rowData)
 	}
 
 	return &models.UploadDataResponse{
 		Columns:  upload.Columns,
 		Data:     paginatedData,
-		Total:    total,
+		Total:    totalCount,
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
@@ -193,12 +155,12 @@ func (r *UploadRepository) Create(req *models.CreateUploadRequest) (*models.Uplo
 	}
 	defer tx.Rollback()
 
-	// Insert upload metadata (without data blob)
+	// Insert upload metadata
 	query := `
-		INSERT INTO uploads (name, description, file_name, file_type, file_size, row_count, columns, data, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, '[]', 'completed')
+		INSERT INTO uploads (name, description, file_name, file_type, file_size, row_count, columns, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed')
 		RETURNING id, name, description, file_name, file_type, file_size, row_count, columns,
-		          COALESCE(status, 'completed') as status, COALESCE(error_message, '') as error_message,
+		          status, COALESCE(error_message, '') as error_message,
 		          created_at, updated_at
 	`
 	var u models.Upload
@@ -275,10 +237,10 @@ func (r *UploadRepository) CreateMetadata(req *models.CreateUploadMetadataReques
 	}
 
 	query := `
-		INSERT INTO uploads (name, description, file_name, file_type, file_size, row_count, columns, data, status)
-		VALUES ($1, $2, $3, $4, $5, 0, $6, '[]', $7)
+		INSERT INTO uploads (name, description, file_name, file_type, file_size, row_count, columns, status)
+		VALUES ($1, $2, $3, $4, $5, 0, $6, $7)
 		RETURNING id, name, description, file_name, file_type, file_size, row_count, columns,
-		          COALESCE(status, 'completed') as status, COALESCE(error_message, '') as error_message,
+		          status, COALESCE(error_message, '') as error_message,
 		          created_at, updated_at
 	`
 	var u models.Upload

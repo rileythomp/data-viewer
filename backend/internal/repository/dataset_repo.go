@@ -138,7 +138,129 @@ func (r *DatasetRepository) getColumns(datasetID int) ([]models.DatasetColumn, e
 	return columns, nil
 }
 
+// ValidationError represents a user-facing validation error
+type ValidationError struct {
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Message
+}
+
+// IsValidationError checks if an error is a ValidationError
+func IsValidationError(err error) bool {
+	_, ok := err.(*ValidationError)
+	return ok
+}
+
+// ValidateSourceCompatibility checks if all sources have compatible columns
+// Returns a user-friendly error message if sources are incompatible
+func (r *DatasetRepository) ValidateSourceCompatibility(sourceIDs []int) error {
+	if len(sourceIDs) == 0 {
+		return nil
+	}
+
+	type uploadInfo struct {
+		id      int
+		name    string
+		columns []string
+	}
+
+	// Fetch column info for all uploads
+	uploads := make([]uploadInfo, 0, len(sourceIDs))
+	for _, id := range sourceIDs {
+		var name string
+		var columnsJSON []byte
+		err := r.db.QueryRow("SELECT name, columns FROM uploads WHERE id = $1", id).Scan(&name, &columnsJSON)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return &ValidationError{Message: fmt.Sprintf("Upload with ID %d not found", id)}
+			}
+			return fmt.Errorf("failed to get upload info: %w", err)
+		}
+
+		var columns []string
+		if err := json.Unmarshal(columnsJSON, &columns); err != nil {
+			return fmt.Errorf("failed to parse columns for upload '%s': %w", name, err)
+		}
+
+		if len(columns) == 0 {
+			return &ValidationError{Message: fmt.Sprintf("Upload '%s' has no columns", name)}
+		}
+
+		uploads = append(uploads, uploadInfo{id: id, name: name, columns: columns})
+	}
+
+	// Compare all uploads against the first one
+	firstUpload := uploads[0]
+	for _, upload := range uploads[1:] {
+		if !columnsMatch(firstUpload.columns, upload.columns) {
+			return &ValidationError{
+				Message: fmt.Sprintf("'%s' has different columns than '%s'", upload.name, firstUpload.name),
+			}
+		}
+	}
+
+	return nil
+}
+
+// ValidateAddSourceCompatibility checks if a new source is compatible with existing dataset columns
+func (r *DatasetRepository) ValidateAddSourceCompatibility(datasetID int, sourceType string, sourceID int) error {
+	if sourceType != "upload" {
+		return nil // Only validate uploads for now
+	}
+
+	// Get existing dataset columns
+	dataset, err := r.GetByID(datasetID)
+	if err != nil {
+		return err
+	}
+	if dataset == nil {
+		return &ValidationError{Message: "Dataset not found"}
+	}
+
+	// If dataset has no columns yet (no sources), any source is compatible
+	if len(dataset.Columns) == 0 {
+		return nil
+	}
+
+	// Get the new upload's columns
+	var uploadName string
+	var columnsJSON []byte
+	err = r.db.QueryRow("SELECT name, columns FROM uploads WHERE id = $1", sourceID).Scan(&uploadName, &columnsJSON)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return &ValidationError{Message: fmt.Sprintf("Upload with ID %d not found", sourceID)}
+		}
+		return fmt.Errorf("failed to get upload info: %w", err)
+	}
+
+	var newColumns []string
+	if err := json.Unmarshal(columnsJSON, &newColumns); err != nil {
+		return fmt.Errorf("failed to parse columns: %w", err)
+	}
+
+	// Compare with existing dataset columns
+	existingColumns := make([]string, len(dataset.Columns))
+	for i, col := range dataset.Columns {
+		existingColumns[i] = col.Name
+	}
+
+	if !columnsMatch(existingColumns, newColumns) {
+		return &ValidationError{
+			Message: fmt.Sprintf("'%s' has different columns than the existing dataset", uploadName),
+		}
+	}
+
+	return nil
+}
+
 func (r *DatasetRepository) Create(req *models.CreateDatasetRequest) (*models.Dataset, error) {
+	// Validate source compatibility before creating dataset
+	if err := r.ValidateSourceCompatibility(req.SourceIDs); err != nil {
+		return nil, err
+	}
+
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -211,6 +333,11 @@ func (r *DatasetRepository) Delete(id int) error {
 }
 
 func (r *DatasetRepository) AddSource(datasetID int, sourceType string, sourceID int) error {
+	// Validate source compatibility before adding
+	if err := r.ValidateAddSourceCompatibility(datasetID, sourceType, sourceID); err != nil {
+		return err
+	}
+
 	// Get next position
 	var maxPos int
 	r.db.QueryRow("SELECT COALESCE(MAX(position), -1) FROM dataset_sources WHERE dataset_id = $1", datasetID).Scan(&maxPos)
@@ -235,6 +362,40 @@ func (r *DatasetRepository) RemoveSource(datasetID, sourceID int) error {
 
 	// Rebuild dataset
 	return r.BuildDataset(datasetID)
+}
+
+// DatasetWithSourceInfo includes the source junction table ID for removal operations
+type DatasetWithSourceInfo struct {
+	models.Dataset
+	SourceJunctionID int `json:"source_junction_id"`
+}
+
+// GetBySourceUploadID returns all datasets that contain the specified upload as a source
+func (r *DatasetRepository) GetBySourceUploadID(uploadID int) ([]DatasetWithSourceInfo, error) {
+	query := `
+		SELECT d.id, d.name, d.description, d.row_count, d.status,
+		       COALESCE(d.error_message, ''), d.created_at, d.updated_at, ds.id as source_junction_id
+		FROM datasets d
+		INNER JOIN dataset_sources ds ON d.id = ds.dataset_id
+		WHERE ds.source_type = 'upload' AND ds.source_id = $1
+		ORDER BY d.name
+	`
+	rows, err := r.db.Query(query, uploadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query datasets by source: %w", err)
+	}
+	defer rows.Close()
+
+	var datasets []DatasetWithSourceInfo
+	for rows.Next() {
+		var d DatasetWithSourceInfo
+		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.RowCount, &d.Status,
+			&d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt, &d.SourceJunctionID); err != nil {
+			return nil, fmt.Errorf("failed to scan dataset: %w", err)
+		}
+		datasets = append(datasets, d)
+	}
+	return datasets, nil
 }
 
 func (r *DatasetRepository) BuildDataset(id int) error {
@@ -317,7 +478,7 @@ func (r *DatasetRepository) BuildDataset(id int) error {
 		safeName := sanitizeColumnName(col)
 		colDefs[i] = fmt.Sprintf("%s TEXT", safeName)
 	}
-	createSQL := fmt.Sprintf("CREATE TABLE %s (id SERIAL PRIMARY KEY, %s)", tableName, strings.Join(colDefs, ", "))
+	createSQL := fmt.Sprintf("CREATE TABLE %s (_row_id SERIAL PRIMARY KEY, %s)", tableName, strings.Join(colDefs, ", "))
 	_, err = r.db.Exec(createSQL)
 	if err != nil {
 		r.setError(id, "failed to create data table: "+err.Error())
@@ -328,16 +489,30 @@ func (r *DatasetRepository) BuildDataset(id int) error {
 	totalRows := 0
 	for _, source := range sources {
 		if source.SourceType == "upload" {
-			var dataJSON []byte
-			err = r.db.QueryRow("SELECT data FROM uploads WHERE id = $1", source.SourceID).Scan(&dataJSON)
+			var sourceRows [][]any
+
+			// Read from upload_rows table
+			rows, err := r.db.Query("SELECT data FROM upload_rows WHERE upload_id = $1 ORDER BY row_index", source.SourceID)
 			if err != nil {
 				continue
 			}
-			var data [][]any
-			json.Unmarshal(dataJSON, &data)
 
-			// Insert rows
-			for _, row := range data {
+			for rows.Next() {
+				var rowJSON []byte
+				if err := rows.Scan(&rowJSON); err != nil {
+					continue
+				}
+
+				var row []any
+				if err := json.Unmarshal(rowJSON, &row); err != nil {
+					continue
+				}
+				sourceRows = append(sourceRows, row)
+			}
+			rows.Close()
+
+			// Insert all rows from this source
+			for _, row := range sourceRows {
 				// Build insert statement
 				safeColNames := make([]string, len(firstColumns))
 				placeholders := make([]string, len(firstColumns))
@@ -358,7 +533,6 @@ func (r *DatasetRepository) BuildDataset(id int) error {
 				)
 				_, err = r.db.Exec(insertSQL, values...)
 				if err != nil {
-					// Log but continue
 					continue
 				}
 				totalRows++
@@ -404,7 +578,7 @@ func (r *DatasetRepository) GetData(id int, page, pageSize int, sortColumn, sort
 	selectCols := strings.Join(safeColNames, ", ")
 
 	// Validate sort column
-	orderClause := "id"
+	orderClause := "_row_id"
 	if sortColumn != "" {
 		safeSortCol := sanitizeColumnName(sortColumn)
 		// Verify column exists

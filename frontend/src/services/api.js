@@ -1,4 +1,4 @@
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export const listApi = {
   getGroupedList: async () => {
@@ -359,31 +359,45 @@ export const chartsApi = {
     return res.json();
   },
 
-  create: async (name, description, accountIds = [], groupIds = []) => {
+  create: async (name, description, accountIds = [], groupIds = [], datasetConfig = null) => {
+    const payload = {
+      name,
+      description,
+    };
+
+    if (datasetConfig) {
+      payload.dataset_config = datasetConfig;
+    } else {
+      payload.account_ids = accountIds;
+      payload.group_ids = groupIds;
+    }
+
     const res = await fetch(`${API_BASE}/charts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        description,
-        account_ids: accountIds,
-        group_ids: groupIds,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Failed to create chart');
     return res.json();
   },
 
-  update: async (id, name, description, accountIds = [], groupIds = []) => {
+  update: async (id, name, description, accountIds = [], groupIds = [], datasetConfig = null) => {
+    const payload = {
+      name,
+      description,
+    };
+
+    if (datasetConfig) {
+      payload.dataset_config = datasetConfig;
+    } else {
+      payload.account_ids = accountIds;
+      payload.group_ids = groupIds;
+    }
+
     const res = await fetch(`${API_BASE}/charts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        description,
-        account_ids: accountIds,
-        group_ids: groupIds,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Failed to update chart');
     return res.json();
@@ -455,6 +469,12 @@ export const uploadsApi = {
       method: 'DELETE',
     });
     if (!res.ok) throw new Error('Failed to delete upload');
+    return res.json();
+  },
+
+  getDatasets: async (id) => {
+    const res = await fetch(`${API_BASE}/uploads/${id}/datasets`);
+    if (!res.ok) throw new Error('Failed to fetch datasets for upload');
     return res.json();
   },
 };
