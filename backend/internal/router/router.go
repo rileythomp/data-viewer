@@ -3,6 +3,7 @@ package router
 import (
 	"database/sql"
 	"os"
+	"strings"
 
 	"finance-tracker/internal/handlers"
 	"finance-tracker/internal/repository"
@@ -111,6 +112,13 @@ func New(db *sql.DB) *mux.Router {
 
 func WithCORS(r *mux.Router) *cors.Cors {
 	allowedOrigins := []string{"http://localhost:5173", "http://localhost:3000"}
+
+	// Add additional origins from CORS_ORIGINS env var (comma-separated)
+	if origins := os.Getenv("CORS_ORIGINS"); origins != "" {
+		for _, origin := range strings.Split(origins, ",") {
+			allowedOrigins = append(allowedOrigins, strings.TrimSpace(origin))
+		}
+	}
 
 	// Add CORS_ORIGIN from environment if set (for Railway deployment)
 	if origin := os.Getenv("CORS_ORIGIN"); origin != "" {

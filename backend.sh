@@ -1,3 +1,5 @@
 #!/bin/bash
+PORT=${1:-8080}
+FRONTEND_PORT=${2:-5173}
 cd "$(dirname "$0")/backend"
-go run cmd/server/main.go
+SERVER_PORT=$PORT CORS_ORIGINS="http://localhost:$FRONTEND_PORT" go run cmd/server/main.go

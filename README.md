@@ -36,8 +36,7 @@ docker exec -i metabase-postgres psql -U metabase -d finances < migrations/001_c
 ### 3. Start the Go Backend
 
 ```bash
-cd backend
-go run cmd/server/main.go
+./backend.sh
 ```
 
 The API will be available at http://localhost:8080
@@ -47,12 +46,26 @@ The API will be available at http://localhost:8080
 In a new terminal:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+./frontend.sh
 ```
 
 The app will be available at http://localhost:5173
+
+### Running on Custom Ports
+
+To run multiple worktrees against the same database, you can specify custom ports:
+
+```bash
+# Terminal 1: Backend on port 8081, expecting frontend on port 5174
+./backend.sh 8081 5174
+
+# Terminal 2: Frontend on port 5174, connecting to backend on port 8081
+./frontend.sh 5174 8081
+```
+
+The scripts accept the following arguments:
+- `backend.sh [BACKEND_PORT] [FRONTEND_PORT]` - defaults to 8080 and 5173
+- `frontend.sh [FRONTEND_PORT] [BACKEND_PORT]` - defaults to 5173 and 8080
 
 ## Project Structure
 
@@ -115,6 +128,9 @@ The backend supports these environment variables (with defaults):
 | DB_PASSWORD | mysecretpassword | Database password |
 | DB_NAME | finances | Database name |
 | SERVER_PORT | 8080 | API server port |
+| CORS_ORIGINS | - | Comma-separated list of additional allowed origins |
+| CORS_ORIGIN | - | Single additional allowed origin (for Railway) |
+| VITE_BACKEND_PORT | 8080 | Backend port for frontend proxy (frontend only) |
 
 ## Metabase Integration
 
