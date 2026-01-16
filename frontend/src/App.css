@@ -2029,6 +2029,17 @@ select.account-select {
   margin: 0;
 }
 
+.section-header-with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.section-header-with-action .detail-section-title {
+  margin: 0;
+}
+
 .chart-view-toggle {
   display: flex;
   justify-content: center;

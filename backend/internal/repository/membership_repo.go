@@ -13,12 +13,13 @@ func NewMembershipRepository(db *sql.DB) *MembershipRepository {
 	return &MembershipRepository{db: db}
 }
 
-// GetGroupsForAccount returns all group IDs for an account
+// GetGroupsForAccount returns all group IDs for an account (excludes institutions)
 func (r *MembershipRepository) GetGroupsForAccount(accountID int) ([]int, error) {
 	query := `
-		SELECT group_id FROM account_group_memberships
-		WHERE account_id = $1
-		ORDER BY group_id
+		SELECT m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE m.account_id = $1 AND g.entity_type = 'group'
+		ORDER BY m.group_id
 	`
 	rows, err := r.db.Query(query, accountID)
 	if err != nil {
@@ -37,11 +38,13 @@ func (r *MembershipRepository) GetGroupsForAccount(accountID int) ([]int, error)
 	return groupIDs, nil
 }
 
-// GetAllMemberships returns a map of account ID -> group IDs for all accounts
+// GetAllMemberships returns a map of account ID -> group IDs for all accounts (excludes institutions)
 func (r *MembershipRepository) GetAllMemberships() (map[int][]int, error) {
 	query := `
-		SELECT account_id, group_id FROM account_group_memberships
-		ORDER BY account_id, group_id
+		SELECT m.account_id, m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE g.entity_type = 'group'
+		ORDER BY m.account_id, m.group_id
 	`
 	rows, err := r.db.Query(query)
 	if err != nil {
@@ -251,6 +254,111 @@ func (r *MembershipRepository) UpdatePositionsInGroup(groupID int, positions []s
 		`, pos.Position, pos.AccountID, groupID)
 		if err != nil {
 			return fmt.Errorf("failed to update position for account %d: %w", pos.AccountID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
+// GetInstitutionForAccount returns the institution ID for an account (if any)
+func (r *MembershipRepository) GetInstitutionForAccount(accountID int) (*int, error) {
+	query := `
+		SELECT m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE m.account_id = $1 AND g.entity_type = 'institution'
+		LIMIT 1
+	`
+	var institutionID int
+	err := r.db.QueryRow(query, accountID).Scan(&institutionID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get institution for account: %w", err)
+	}
+	return &institutionID, nil
+}
+
+// GetAllInstitutionMemberships returns a map of account ID -> institution ID
+func (r *MembershipRepository) GetAllInstitutionMemberships() (map[int]int, error) {
+	query := `
+		SELECT m.account_id, m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE g.entity_type = 'institution'
+		ORDER BY m.account_id
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query institution memberships: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int]int)
+	for rows.Next() {
+		var accountID, institutionID int
+		if err := rows.Scan(&accountID, &institutionID); err != nil {
+			return nil, fmt.Errorf("failed to scan institution membership: %w", err)
+		}
+		result[accountID] = institutionID
+	}
+	return result, nil
+}
+
+// SetInstitution sets or clears the institution for an account
+// An account can only belong to one institution at a time
+func (r *MembershipRepository) SetInstitution(accountID int, institutionID *int) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// First, remove account from any existing institutions
+	_, err = tx.Exec(`
+		DELETE FROM account_group_memberships
+		WHERE account_id = $1 AND group_id IN (
+			SELECT id FROM account_groups WHERE entity_type = 'institution'
+		)
+	`, accountID)
+	if err != nil {
+		return fmt.Errorf("failed to remove existing institution membership: %w", err)
+	}
+
+	// If institutionID is provided, add the account to that institution
+	if institutionID != nil {
+		// Verify the target is actually an institution
+		var entityType string
+		err := tx.QueryRow("SELECT entity_type FROM account_groups WHERE id = $1", *institutionID).Scan(&entityType)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("institution not found")
+		}
+		if err != nil {
+			return fmt.Errorf("failed to verify institution: %w", err)
+		}
+		if entityType != "institution" {
+			return fmt.Errorf("target is not an institution")
+		}
+
+		// Get max position for this institution
+		var maxPos sql.NullInt64
+		err = tx.QueryRow("SELECT MAX(position_in_group) FROM account_group_memberships WHERE group_id = $1", *institutionID).Scan(&maxPos)
+		if err != nil {
+			return fmt.Errorf("failed to get max position: %w", err)
+		}
+		newPos := 1
+		if maxPos.Valid {
+			newPos = int(maxPos.Int64) + 1
+		}
+
+		_, err = tx.Exec(`
+			INSERT INTO account_group_memberships (account_id, group_id, position_in_group)
+			VALUES ($1, $2, $3)
+		`, accountID, *institutionID, newPos)
+		if err != nil {
+			return fmt.Errorf("failed to add institution membership: %w", err)
 		}
 	}
 
