@@ -18,6 +18,7 @@ import UploadDetail from './components/UploadDetail'
 import DatasetList from './components/DatasetList'
 import DatasetCreate from './components/DatasetCreate'
 import DatasetDetail from './components/DatasetDetail'
+import SpreadsheetPage from './components/SpreadsheetPage'
 
 function App() {
   return (
@@ -41,6 +42,7 @@ function App() {
           <Route path="/datasets" element={<DatasetList />} />
           <Route path="/datasets/new" element={<DatasetCreate />} />
           <Route path="/datasets/:id" element={<DatasetDetail />} />
+          <Route path="/spreadsheet" element={<SpreadsheetPage />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
