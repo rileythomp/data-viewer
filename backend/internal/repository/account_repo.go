@@ -107,10 +107,12 @@ func (r *AccountRepository) GetAll() ([]models.Account, error) {
 		accounts = append(accounts, a)
 	}
 
-	// Fetch group memberships for all accounts
+	// Fetch group memberships for all accounts (only groups, not institutions)
 	membershipQuery := `
-		SELECT account_id, group_id FROM account_group_memberships
-		ORDER BY account_id, group_id
+		SELECT m.account_id, m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE g.entity_type = 'group'
+		ORDER BY m.account_id, m.group_id
 	`
 	membershipRows, err := r.db.Query(membershipQuery)
 	if err != nil {
@@ -127,12 +129,37 @@ func (r *AccountRepository) GetAll() ([]models.Account, error) {
 		memberships[accountID] = append(memberships[accountID], groupID)
 	}
 
-	// Assign group IDs to accounts
+	// Fetch institution memberships for all accounts
+	institutionQuery := `
+		SELECT m.account_id, m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE g.entity_type = 'institution'
+		ORDER BY m.account_id
+	`
+	institutionRows, err := r.db.Query(institutionQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query institution memberships: %w", err)
+	}
+	defer institutionRows.Close()
+
+	institutionMemberships := make(map[int]int)
+	for institutionRows.Next() {
+		var accountID, institutionID int
+		if err := institutionRows.Scan(&accountID, &institutionID); err != nil {
+			return nil, fmt.Errorf("failed to scan institution membership: %w", err)
+		}
+		institutionMemberships[accountID] = institutionID
+	}
+
+	// Assign group IDs and institution ID to accounts
 	for i := range accounts {
 		if groupIDs, ok := memberships[accounts[i].ID]; ok {
 			accounts[i].GroupIDs = groupIDs
 		} else {
 			accounts[i].GroupIDs = []int{}
+		}
+		if institutionID, ok := institutionMemberships[accounts[i].ID]; ok {
+			accounts[i].InstitutionID = &institutionID
 		}
 	}
 
@@ -161,8 +188,13 @@ func (r *AccountRepository) GetByID(id int) (*models.Account, error) {
 		json.Unmarshal(formulaJSON, &a.Formula)
 	}
 
-	// Fetch group memberships for this account
-	membershipQuery := `SELECT group_id FROM account_group_memberships WHERE account_id = $1 ORDER BY group_id`
+	// Fetch group memberships for this account (only groups, not institutions)
+	membershipQuery := `
+		SELECT m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE m.account_id = $1 AND g.entity_type = 'group'
+		ORDER BY m.group_id
+	`
 	rows, err := r.db.Query(membershipQuery, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query memberships: %w", err)
@@ -176,6 +208,21 @@ func (r *AccountRepository) GetByID(id int) (*models.Account, error) {
 			return nil, fmt.Errorf("failed to scan group ID: %w", err)
 		}
 		a.GroupIDs = append(a.GroupIDs, groupID)
+	}
+
+	// Fetch institution membership for this account
+	institutionQuery := `
+		SELECT m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE m.account_id = $1 AND g.entity_type = 'institution'
+		LIMIT 1
+	`
+	var institutionID int
+	err = r.db.QueryRow(institutionQuery, id).Scan(&institutionID)
+	if err == nil {
+		a.InstitutionID = &institutionID
+	} else if err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to query institution membership: %w", err)
 	}
 
 	// If this is a calculated account, resolve its balance using all accounts
@@ -608,10 +655,12 @@ func (r *AccountRepository) GetAllIncludingArchived() ([]models.Account, error) 
 		accounts = append(accounts, a)
 	}
 
-	// Fetch group memberships for all accounts
+	// Fetch group memberships for all accounts (only groups, not institutions)
 	membershipQuery := `
-		SELECT account_id, group_id FROM account_group_memberships
-		ORDER BY account_id, group_id
+		SELECT m.account_id, m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE g.entity_type = 'group'
+		ORDER BY m.account_id, m.group_id
 	`
 	membershipRows, err := r.db.Query(membershipQuery)
 	if err != nil {
@@ -628,12 +677,37 @@ func (r *AccountRepository) GetAllIncludingArchived() ([]models.Account, error) 
 		memberships[accountID] = append(memberships[accountID], groupID)
 	}
 
-	// Assign group IDs to accounts
+	// Fetch institution memberships for all accounts
+	institutionQuery := `
+		SELECT m.account_id, m.group_id FROM account_group_memberships m
+		JOIN account_groups g ON m.group_id = g.id
+		WHERE g.entity_type = 'institution'
+		ORDER BY m.account_id
+	`
+	institutionRows, err := r.db.Query(institutionQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query institution memberships: %w", err)
+	}
+	defer institutionRows.Close()
+
+	institutionMemberships := make(map[int]int)
+	for institutionRows.Next() {
+		var accountID, institutionID int
+		if err := institutionRows.Scan(&accountID, &institutionID); err != nil {
+			return nil, fmt.Errorf("failed to scan institution membership: %w", err)
+		}
+		institutionMemberships[accountID] = institutionID
+	}
+
+	// Assign group IDs and institution ID to accounts
 	for i := range accounts {
 		if groupIDs, ok := memberships[accounts[i].ID]; ok {
 			accounts[i].GroupIDs = groupIDs
 		} else {
 			accounts[i].GroupIDs = []int{}
+		}
+		if institutionID, ok := institutionMemberships[accounts[i].ID]; ok {
+			accounts[i].InstitutionID = &institutionID
 		}
 	}
 

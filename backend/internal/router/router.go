@@ -26,6 +26,7 @@ func New(db *sql.DB) *mux.Router {
 	datasetRepo := repository.NewDatasetRepository(db)
 	accountHandler := handlers.NewAccountHandler(accountRepo, membershipRepo)
 	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
+	institutionHandler := handlers.NewInstitutionHandler(groupRepo)
 	settingsHandler := handlers.NewSettingsHandler(settingsRepo)
 	dashboardHandler := handlers.NewDashboardHandler(dashboardRepo)
 	chartHandler := handlers.NewChartHandler(chartRepo)
@@ -56,6 +57,7 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/accounts/{id}/membership", accountHandler.ModifyGroupMembership).Methods("PATCH")
 	api.HandleFunc("/accounts/{id}/groups", accountHandler.SetGroupMemberships).Methods("PUT")
 	api.HandleFunc("/accounts/{id}/formula", accountHandler.UpdateFormula).Methods("PATCH")
+	api.HandleFunc("/accounts/{id}/institution", accountHandler.SetInstitution).Methods("PATCH")
 
 	// Group routes - /all must come before /{id} routes
 	api.HandleFunc("/groups/all", groupHandler.GetAllIncludingArchived).Methods("GET")
@@ -69,6 +71,18 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/groups/{id}/archive", groupHandler.Archive).Methods("PATCH")
 	api.HandleFunc("/groups/{id}/account-positions", groupHandler.UpdateAccountPositionsInGroup).Methods("PATCH")
 	api.HandleFunc("/groups/{id}/history", groupHandler.GetHistory).Methods("GET")
+
+	// Institution routes - /all must come before /{id} routes
+	api.HandleFunc("/institutions/all", institutionHandler.GetAllIncludingArchived).Methods("GET")
+	api.HandleFunc("/institutions", institutionHandler.GetAll).Methods("GET")
+	api.HandleFunc("/institutions", institutionHandler.Create).Methods("POST")
+	api.HandleFunc("/institutions/{id}/unarchive", institutionHandler.Unarchive).Methods("PATCH")
+	api.HandleFunc("/institutions/{id}", institutionHandler.GetByID).Methods("GET")
+	api.HandleFunc("/institutions/{id}", institutionHandler.Update).Methods("PATCH")
+	api.HandleFunc("/institutions/{id}", institutionHandler.Delete).Methods("DELETE")
+	api.HandleFunc("/institutions/{id}/archive", institutionHandler.Archive).Methods("PATCH")
+	api.HandleFunc("/institutions/{id}/account-positions", institutionHandler.UpdateAccountPositionsInInstitution).Methods("PATCH")
+	api.HandleFunc("/institutions/{id}/history", institutionHandler.GetHistory).Methods("GET")
 
 	// Settings routes
 	api.HandleFunc("/settings/total-formula", settingsHandler.GetTotalFormula).Methods("GET")

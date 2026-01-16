@@ -141,6 +141,9 @@ export default function TotalFormulaDisplay({
                       {itemName}
                     </span>
                   )}
+                  <span className="formula-account-value">
+                    ({formatCurrency(getItemBalance(item.type, item.id))})
+                  </span>
                 </span>
                 {editable && (
                   <button

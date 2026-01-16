@@ -116,6 +116,104 @@ export const groupsApi = {
   },
 };
 
+export const institutionsApi = {
+  getAll: async () => {
+    const res = await fetch(`${API_BASE}/institutions`);
+    if (!res.ok) throw new Error('Failed to fetch institutions');
+    return res.json();
+  },
+
+  getAllIncludingArchived: async () => {
+    const res = await fetch(`${API_BASE}/institutions/all`);
+    if (!res.ok) throw new Error('Failed to fetch institutions');
+    return res.json();
+  },
+
+  unarchive: async (id) => {
+    const res = await fetch(`${API_BASE}/institutions/${id}/unarchive`, {
+      method: 'PATCH',
+    });
+    if (!res.ok) throw new Error('Failed to unarchive institution');
+    return res.json();
+  },
+
+  delete: async (id) => {
+    const res = await fetch(`${API_BASE}/institutions/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete institution');
+    return res.json();
+  },
+
+  getById: async (id) => {
+    const res = await fetch(`${API_BASE}/institutions/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch institution');
+    return res.json();
+  },
+
+  create: async (name, description, color, isCalculated = false, formula = null) => {
+    const payload = {
+      name,
+      description,
+      color,
+      is_calculated: isCalculated,
+    };
+    if (isCalculated && formula) {
+      payload.formula = formula;
+    }
+    const res = await fetch(`${API_BASE}/institutions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Failed to create institution');
+    return res.json();
+  },
+
+  update: async (id, name, description, color, isCalculated = false, formula = null) => {
+    const payload = {
+      name,
+      description,
+      color,
+      is_calculated: isCalculated,
+    };
+    if (isCalculated && formula) {
+      payload.formula = formula;
+    }
+    const res = await fetch(`${API_BASE}/institutions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Failed to update institution');
+    return res.json();
+  },
+
+  archive: async (id) => {
+    const res = await fetch(`${API_BASE}/institutions/${id}/archive`, {
+      method: 'PATCH',
+    });
+    if (!res.ok) throw new Error('Failed to archive institution');
+    return res.json();
+  },
+
+  updateAccountPositionsInInstitution: async (institutionId, positions) => {
+    const res = await fetch(`${API_BASE}/institutions/${institutionId}/account-positions`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ positions }),
+    });
+    if (!res.ok) throw new Error('Failed to update account positions');
+    return res.json();
+  },
+
+  getHistory: async (id) => {
+    const res = await fetch(`${API_BASE}/institutions/${id}/history`);
+    if (!res.ok) throw new Error('Failed to fetch institution history');
+    return res.json();
+  },
+};
+
 export const accountsApi = {
   getAll: async () => {
     const res = await fetch(`${API_BASE}/accounts`);
@@ -266,6 +364,17 @@ export const accountsApi = {
       const errorText = await res.text();
       throw new Error(errorText || 'Failed to update formula');
     }
+    return res.json();
+  },
+
+  // Set institution for an account (null to remove)
+  setInstitution: async (id, institutionId) => {
+    const res = await fetch(`${API_BASE}/accounts/${id}/institution`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ institution_id: institutionId }),
+    });
+    if (!res.ok) throw new Error('Failed to set institution');
     return res.json();
   },
 };

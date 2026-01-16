@@ -688,6 +688,12 @@
   font-weight: 500;
 }
 
+.formula-account-value {
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
 /* Formula Add Row */
 .formula-add {
   display: flex;
@@ -2026,6 +2032,17 @@ select.account-select {
 }
 
 .history-header .detail-section-title {
+  margin: 0;
+}
+
+.section-header-with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.section-header-with-action .detail-section-title {
   margin: 0;
 }
 

@@ -16,6 +16,7 @@ type AccountGroup struct {
 	IsArchived       bool          `json:"is_archived"`
 	IsCalculated     bool          `json:"is_calculated"`
 	Formula          []FormulaItem `json:"formula,omitempty"`
+	EntityType       string        `json:"entity_type"`
 	CreatedAt        time.Time     `json:"created_at"`
 	UpdatedAt        time.Time     `json:"updated_at"`
 }
@@ -98,4 +99,43 @@ type GroupBalanceHistory struct {
 	GroupNameSnapshot string    `json:"group_name_snapshot"`
 	Balance           float64   `json:"balance"`
 	RecordedAt        time.Time `json:"recorded_at"`
+}
+
+// Institution types - institutions are stored in the same table as groups
+// with entity_type = 'institution'
+
+type Institution struct {
+	ID               int           `json:"id"`
+	Name             string        `json:"name"`
+	Description      string        `json:"description"`
+	Color            string        `json:"color"`
+	Position         int           `json:"position"`
+	IsArchived       bool          `json:"is_archived"`
+	IsCalculated     bool          `json:"is_calculated"`
+	Formula          []FormulaItem `json:"formula,omitempty"`
+	TotalBalance     float64       `json:"total_balance,omitempty"`
+	CreatedAt        time.Time     `json:"created_at"`
+	UpdatedAt        time.Time     `json:"updated_at"`
+}
+
+type InstitutionWithAccounts struct {
+	Institution
+	TotalBalance float64          `json:"total_balance"`
+	Accounts     []AccountInGroup `json:"accounts"`
+}
+
+type CreateInstitutionRequest struct {
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	Color        string        `json:"color"`
+	IsCalculated bool          `json:"is_calculated"`
+	Formula      []FormulaItem `json:"formula,omitempty"`
+}
+
+type UpdateInstitutionRequest struct {
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	Color        string        `json:"color"`
+	IsCalculated bool          `json:"is_calculated"`
+	Formula      []FormulaItem `json:"formula,omitempty"`
 }

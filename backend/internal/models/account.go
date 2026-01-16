@@ -10,6 +10,7 @@ type Account struct {
 	IsArchived     bool          `json:"is_archived"`
 	Position       int           `json:"position"`
 	GroupIDs       []int         `json:"group_ids"`
+	InstitutionID  *int          `json:"institution_id"`
 	IsCalculated   bool          `json:"is_calculated"`
 	Formula        []FormulaItem `json:"formula,omitempty"`
 	CreatedAt      time.Time     `json:"created_at"`
@@ -62,4 +63,8 @@ type UpdatePositionsRequest struct {
 type AccountPosition struct {
 	ID       int `json:"id"`
 	Position int `json:"position"`
+}
+
+type SetInstitutionRequest struct {
+	InstitutionID *int `json:"institution_id"`
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil, Archive, X, Check, Calculator } from 'lucide-react';
-import { accountsApi, groupsApi } from '../services/api';
+import { accountsApi, groupsApi, institutionsApi } from '../services/api';
 import BalanceHistoryTable from './BalanceHistoryTable';
 import BalanceHistoryChart from './BalanceHistoryChart';
 import FormulaDisplay from './FormulaDisplay';
@@ -19,6 +19,7 @@ export default function AccountDetail() {
   const [isEditingBalance, setIsEditingBalance] = useState(false);
   const [balanceValue, setBalanceValue] = useState('');
   const [groups, setGroups] = useState([]);
+  const [institutions, setInstitutions] = useState([]);
   const [allAccounts, setAllAccounts] = useState([]);
   const [viewMode, setViewMode] = useState('table');
   const [isCalculated, setIsCalculated] = useState(false);
@@ -54,6 +55,15 @@ export default function AccountDetail() {
     }
   };
 
+  const fetchInstitutions = async () => {
+    try {
+      const data = await institutionsApi.getAll();
+      setInstitutions(data || []);
+    } catch (err) {
+      // Institutions might not exist, that's okay
+    }
+  };
+
   const fetchAllAccounts = async () => {
     try {
       const data = await accountsApi.getAll();
@@ -66,7 +76,7 @@ export default function AccountDetail() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      await Promise.all([fetchAccount(), fetchHistory(), fetchGroups(), fetchAllAccounts()]);
+      await Promise.all([fetchAccount(), fetchHistory(), fetchGroups(), fetchInstitutions(), fetchAllAccounts()]);
       setLoading(false);
     };
     fetchData();
@@ -120,6 +130,38 @@ export default function AccountDetail() {
   const getAccountGroups = () => {
     if (!account?.group_ids || account.group_ids.length === 0) return [];
     return groups.filter(g => account.group_ids.includes(g.id));
+  };
+
+  const handleSetInstitution = async (institutionId) => {
+    try {
+      await accountsApi.setInstitution(account.id, institutionId);
+      await fetchAccount();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRemoveFromInstitution = async () => {
+    try {
+      await accountsApi.setInstitution(account.id, null);
+      await fetchAccount();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const getAccountInstitution = () => {
+    if (!account?.institution_id) return null;
+    return institutions.find(i => i.id === account.institution_id);
+  };
+
+  const getAvailableInstitutions = () => {
+    if (!institutions || institutions.length === 0) return [];
+    // Exclude the current institution if account already has one
+    if (account?.institution_id) {
+      return institutions.filter(i => i.id !== account.institution_id);
+    }
+    return institutions;
   };
 
   const handleBalanceClick = () => {
@@ -415,6 +457,55 @@ export default function AccountDetail() {
             )}
             {groups.length === 0 && (
               <p className="empty-state-small">No groups available</p>
+            )}
+          </div>
+
+          <div className="detail-group-section">
+            <span className="detail-group-label">Institution</span>
+            <div className="group-tags-container">
+              {getAccountInstitution() && (
+                <div className="group-tag">
+                  <span
+                    className="group-color-dot"
+                    style={{ backgroundColor: getAccountInstitution().color }}
+                  />
+                  <span
+                    className="group-tag-name"
+                    onClick={() => navigate(`/institutions/${getAccountInstitution().id}`)}
+                    title="View institution"
+                  >
+                    {getAccountInstitution().name}
+                  </span>
+                  <button
+                    onClick={handleRemoveFromInstitution}
+                    className="group-tag-remove"
+                    title="Remove from institution"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+            {getAvailableInstitutions().length > 0 && (
+              <select
+                className="group-add-dropdown"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleSetInstitution(parseInt(e.target.value));
+                  }
+                }}
+              >
+                <option value="">{account?.institution_id ? 'Change institution...' : 'Set institution...'}</option>
+                {getAvailableInstitutions().map(inst => (
+                  <option key={inst.id} value={inst.id}>
+                    {inst.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {institutions.length === 0 && (
+              <p className="empty-state-small">No institutions available</p>
             )}
           </div>
 

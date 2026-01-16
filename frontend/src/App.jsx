@@ -5,6 +5,8 @@ import NavBar from './components/NavBar'
 import AccountList from './components/AccountList'
 import AccountDetail from './components/AccountDetail'
 import GroupDetail from './components/GroupDetail'
+import InstitutionList from './components/InstitutionList'
+import InstitutionDetail from './components/InstitutionDetail'
 import SettingsPage from './components/SettingsPage'
 import DashboardList from './components/DashboardList'
 import DashboardCreate from './components/DashboardCreate'
@@ -28,6 +30,8 @@ function App() {
           <Route path="/" element={<AccountList />} />
           <Route path="/accounts/:id" element={<AccountDetail />} />
           <Route path="/groups/:id" element={<GroupDetail />} />
+          <Route path="/institutions" element={<InstitutionList />} />
+          <Route path="/institutions/:id" element={<InstitutionDetail />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/dashboards" element={<DashboardList />} />
           <Route path="/dashboards/new" element={<DashboardCreate />} />
