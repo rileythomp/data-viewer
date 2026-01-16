@@ -29,6 +29,11 @@ export default function FormulaDisplay({
     return account?.account_name || 'Unknown Account';
   };
 
+  const getAccountBalance = (accountId) => {
+    const account = accounts.find(a => a.id === accountId);
+    return account?.current_balance || 0;
+  };
+
   const formatCoefficient = (coefficient) => {
     const absCoeff = Math.abs(coefficient);
     // Omit coefficient display if it's 1
@@ -152,6 +157,9 @@ export default function FormulaDisplay({
                       {accountName}
                     </span>
                   )}
+                  <span className="formula-account-value">
+                    ({formatCurrency(getAccountBalance(normalized.accountId))})
+                  </span>
                 </span>
                 {editable && (
                   <button
