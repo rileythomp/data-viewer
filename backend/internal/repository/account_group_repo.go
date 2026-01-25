@@ -22,9 +22,9 @@ func NewAccountGroupRepository(db *sql.DB) *AccountGroupRepository {
 
 func (r *AccountGroupRepository) GetAll() ([]models.AccountGroup, error) {
 	query := `
-		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 		FROM account_groups
-		WHERE is_archived = false
+		WHERE is_archived = false AND entity_type = 'group'
 		ORDER BY position ASC, group_name ASC
 	`
 	rows, err := r.db.Query(query)
@@ -37,7 +37,7 @@ func (r *AccountGroupRepository) GetAll() ([]models.AccountGroup, error) {
 	for rows.Next() {
 		var g models.AccountGroup
 		var formulaJSON []byte
-		err := rows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt)
+		err := rows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.EntityType, &g.CreatedAt, &g.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -51,13 +51,13 @@ func (r *AccountGroupRepository) GetAll() ([]models.AccountGroup, error) {
 
 func (r *AccountGroupRepository) GetByID(id int) (*models.AccountGroup, error) {
 	query := `
-		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 		FROM account_groups
 		WHERE id = $1
 	`
 	var g models.AccountGroup
 	var formulaJSON []byte
-	err := r.db.QueryRow(query, id).Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt)
+	err := r.db.QueryRow(query, id).Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.EntityType, &g.CreatedAt, &g.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -195,14 +195,14 @@ func (r *AccountGroupRepository) Create(req *models.CreateGroupRequest) (*models
 	}
 
 	query := `
-		INSERT INTO account_groups (group_name, group_description, color, position, is_calculated, formula)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		INSERT INTO account_groups (group_name, group_description, color, position, is_calculated, formula, entity_type)
+		VALUES ($1, $2, $3, $4, $5, $6, 'group')
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 	`
 	var g models.AccountGroup
 	var returnedFormula []byte
 	err = tx.QueryRow(query, req.GroupName, req.GroupDescription, color, newPos, req.IsCalculated, formulaJSON).Scan(
-		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &returnedFormula, &g.CreatedAt, &g.UpdatedAt,
+		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &returnedFormula, &g.EntityType, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -231,12 +231,12 @@ func (r *AccountGroupRepository) Update(id int, req *models.UpdateGroupRequest) 
 		UPDATE account_groups
 		SET group_name = $1, group_description = $2, color = $3, is_calculated = $4, formula = $5, updated_at = NOW()
 		WHERE id = $6
-		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 	`
 	var g models.AccountGroup
 	var returnedFormula []byte
 	err = r.db.QueryRow(query, req.GroupName, req.GroupDescription, req.Color, req.IsCalculated, formulaJSON, id).Scan(
-		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &returnedFormula, &g.CreatedAt, &g.UpdatedAt,
+		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &returnedFormula, &g.EntityType, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -252,12 +252,12 @@ func (r *AccountGroupRepository) Archive(id int) (*models.AccountGroup, error) {
 		UPDATE account_groups
 		SET is_archived = true, updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 	`
 	var g models.AccountGroup
 	var formulaJSON []byte
 	err := r.db.QueryRow(query, id).Scan(
-		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt,
+		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.EntityType, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -526,8 +526,9 @@ func (r *AccountGroupRepository) calculateFormulaTotal(
 
 func (r *AccountGroupRepository) GetAllIncludingArchived() ([]models.AccountGroup, error) {
 	query := `
-		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 		FROM account_groups
+		WHERE entity_type = 'group'
 		ORDER BY group_name ASC
 	`
 	rows, err := r.db.Query(query)
@@ -540,7 +541,7 @@ func (r *AccountGroupRepository) GetAllIncludingArchived() ([]models.AccountGrou
 	for rows.Next() {
 		var g models.AccountGroup
 		var formulaJSON []byte
-		err := rows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt)
+		err := rows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.EntityType, &g.CreatedAt, &g.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -557,12 +558,12 @@ func (r *AccountGroupRepository) Unarchive(id int) (*models.AccountGroup, error)
 		UPDATE account_groups
 		SET is_archived = false, updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 	`
 	var g models.AccountGroup
 	var formulaJSON []byte
 	err := r.db.QueryRow(query, id).Scan(
-		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt,
+		&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.EntityType, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -625,4 +626,462 @@ func (r *AccountGroupRepository) GetHistory(groupID int) ([]models.GroupBalanceH
 		history = append(history, h)
 	}
 	return history, nil
+}
+
+// Institution methods - institutions are stored in account_groups with entity_type = 'institution'
+
+func (r *AccountGroupRepository) GetAllInstitutions() ([]models.InstitutionWithAccounts, error) {
+	query := `
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		FROM account_groups
+		WHERE is_archived = false AND entity_type = 'institution'
+		ORDER BY position ASC, group_name ASC
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var institutions []models.Institution
+	for rows.Next() {
+		var i models.Institution
+		var formulaJSON []byte
+		err := rows.Scan(&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.CreatedAt, &i.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &i.Formula)
+		}
+		institutions = append(institutions, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Get all accounts with full details
+	allAccountsQuery := `
+		SELECT id, account_name, account_info, current_balance, is_archived, position, is_calculated, formula, created_at, updated_at
+		FROM account_balances
+		WHERE is_archived = false
+	`
+	accountRows, err := r.db.Query(allAccountsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer accountRows.Close()
+
+	var allAccounts []models.Account
+	for accountRows.Next() {
+		var a models.Account
+		var formulaJSON []byte
+		err := accountRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &a.Formula)
+		}
+		a.GroupIDs = []int{}
+		allAccounts = append(allAccounts, a)
+	}
+	if err := accountRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Resolve calculated account balances
+	ResolveCalculatedBalances(allAccounts)
+
+	// Build account lookup map (full account objects)
+	accountMap := make(map[int]*models.Account)
+	for i := range allAccounts {
+		accountMap[allAccounts[i].ID] = &allAccounts[i]
+	}
+
+	// Get all institution memberships with position
+	membershipQuery := `
+		SELECT agm.group_id, agm.account_id, agm.position_in_group
+		FROM account_group_memberships agm
+		JOIN account_groups ag ON agm.group_id = ag.id
+		JOIN account_balances ab ON agm.account_id = ab.id
+		WHERE ag.entity_type = 'institution' AND ag.is_archived = false AND ab.is_archived = false
+		ORDER BY agm.group_id, agm.position_in_group ASC
+	`
+	membershipRows, err := r.db.Query(membershipQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer membershipRows.Close()
+
+	// Map institution ID -> list of AccountInGroup
+	institutionAccounts := make(map[int][]models.AccountInGroup)
+	for membershipRows.Next() {
+		var groupID, accountID, positionInGroup int
+		if err := membershipRows.Scan(&groupID, &accountID, &positionInGroup); err != nil {
+			return nil, err
+		}
+		if acc, ok := accountMap[accountID]; ok {
+			institutionAccounts[groupID] = append(institutionAccounts[groupID], models.AccountInGroup{
+				Account:         *acc,
+				PositionInGroup: positionInGroup,
+			})
+		}
+	}
+	if err := membershipRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Build result with accounts and total balances
+	var result []models.InstitutionWithAccounts
+	for _, inst := range institutions {
+		var totalBalance float64
+		if inst.IsCalculated && len(inst.Formula) > 0 {
+			// Use formula to calculate balance
+			for _, item := range inst.Formula {
+				if acc, ok := accountMap[item.AccountID]; ok {
+					totalBalance += acc.CurrentBalance * item.Coefficient
+				}
+			}
+		} else {
+			// Sum balances of member accounts
+			for _, accInGroup := range institutionAccounts[inst.ID] {
+				totalBalance += accInGroup.CurrentBalance
+			}
+		}
+
+		accounts := institutionAccounts[inst.ID]
+		if accounts == nil {
+			accounts = []models.AccountInGroup{}
+		}
+
+		result = append(result, models.InstitutionWithAccounts{
+			Institution:  inst,
+			TotalBalance: totalBalance,
+			Accounts:     accounts,
+		})
+	}
+
+	return result, nil
+}
+
+func (r *AccountGroupRepository) GetAllInstitutionsIncludingArchived() ([]models.Institution, error) {
+	query := `
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		FROM account_groups
+		WHERE entity_type = 'institution'
+		ORDER BY group_name ASC
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var institutions []models.Institution
+	for rows.Next() {
+		var i models.Institution
+		var formulaJSON []byte
+		err := rows.Scan(&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.CreatedAt, &i.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &i.Formula)
+		}
+		institutions = append(institutions, i)
+	}
+	return institutions, rows.Err()
+}
+
+func (r *AccountGroupRepository) GetInstitutionByID(id int) (*models.Institution, error) {
+	query := `
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		FROM account_groups
+		WHERE id = $1 AND entity_type = 'institution'
+	`
+	var i models.Institution
+	var formulaJSON []byte
+	err := r.db.QueryRow(query, id).Scan(&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.CreatedAt, &i.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &i.Formula)
+	}
+	return &i, nil
+}
+
+func (r *AccountGroupRepository) GetInstitutionWithAccounts(id int) (*models.InstitutionWithAccounts, error) {
+	institution, err := r.GetInstitutionByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get ALL accounts to resolve formula dependencies
+	allAccountsQuery := `
+		SELECT id, account_name, account_info, current_balance, is_archived, position, is_calculated, formula, created_at, updated_at
+		FROM account_balances
+		WHERE is_archived = false
+	`
+	allRows, err := r.db.Query(allAccountsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer allRows.Close()
+
+	var allAccounts []models.Account
+	for allRows.Next() {
+		var a models.Account
+		var formulaJSON []byte
+		err := allRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &a.Formula)
+		}
+		a.GroupIDs = []int{}
+		allAccounts = append(allAccounts, a)
+	}
+	if err := allRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Resolve calculated account balances
+	ResolveCalculatedBalances(allAccounts)
+
+	// Build account lookup map
+	accountMap := make(map[int]*models.Account)
+	for i := range allAccounts {
+		accountMap[allAccounts[i].ID] = &allAccounts[i]
+	}
+
+	// Get accounts in this institution via join table
+	membershipQuery := `
+		SELECT agm.account_id, agm.position_in_group
+		FROM account_group_memberships agm
+		JOIN account_balances ab ON agm.account_id = ab.id
+		WHERE agm.group_id = $1 AND ab.is_archived = false
+		ORDER BY agm.position_in_group ASC
+	`
+	membershipRows, err := r.db.Query(membershipQuery, id)
+	if err != nil {
+		return nil, err
+	}
+	defer membershipRows.Close()
+
+	var accounts []models.AccountInGroup
+	for membershipRows.Next() {
+		var accountID, positionInGroup int
+		if err := membershipRows.Scan(&accountID, &positionInGroup); err != nil {
+			return nil, err
+		}
+		if acc, ok := accountMap[accountID]; ok {
+			accounts = append(accounts, models.AccountInGroup{
+				Account:         *acc,
+				PositionInGroup: positionInGroup,
+			})
+		}
+	}
+
+	// Calculate total balance
+	var totalBalance float64
+	if institution.IsCalculated && len(institution.Formula) > 0 {
+		// Calculate formula-based balance using resolved account values
+		for _, item := range institution.Formula {
+			if acc, ok := accountMap[item.AccountID]; ok {
+				totalBalance += item.Coefficient * acc.CurrentBalance
+			}
+		}
+	} else {
+		// Default: sum all account balances in this institution
+		for _, a := range accounts {
+			totalBalance += a.CurrentBalance
+		}
+	}
+
+	return &models.InstitutionWithAccounts{
+		Institution:  *institution,
+		TotalBalance: totalBalance,
+		Accounts:     accounts,
+	}, nil
+}
+
+func (r *AccountGroupRepository) CreateInstitution(req *models.CreateInstitutionRequest) (*models.Institution, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Get max position for institutions
+	var maxPos sql.NullInt64
+	err = tx.QueryRow("SELECT MAX(position) FROM account_groups WHERE is_archived = false AND entity_type = 'institution'").Scan(&maxPos)
+	if err != nil {
+		return nil, err
+	}
+	newPos := 1
+	if maxPos.Valid {
+		newPos = int(maxPos.Int64) + 1
+	}
+
+	color := req.Color
+	if color == "" {
+		color = "#3b82f6"
+	}
+
+	var formulaJSON interface{}
+	if req.IsCalculated && len(req.Formula) > 0 {
+		formulaJSON, err = json.Marshal(req.Formula)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	query := `
+		INSERT INTO account_groups (group_name, group_description, color, position, is_calculated, formula, entity_type)
+		VALUES ($1, $2, $3, $4, $5, $6, 'institution')
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+	`
+	var i models.Institution
+	var returnedFormula []byte
+	err = tx.QueryRow(query, req.Name, req.Description, color, newPos, req.IsCalculated, formulaJSON).Scan(
+		&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &returnedFormula, &i.CreatedAt, &i.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(returnedFormula) > 0 {
+		json.Unmarshal(returnedFormula, &i.Formula)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &i, nil
+}
+
+func (r *AccountGroupRepository) UpdateInstitution(id int, req *models.UpdateInstitutionRequest) (*models.Institution, error) {
+	var formulaJSON interface{}
+	var err error
+	if req.IsCalculated && len(req.Formula) > 0 {
+		formulaJSON, err = json.Marshal(req.Formula)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	query := `
+		UPDATE account_groups
+		SET group_name = $1, group_description = $2, color = $3, is_calculated = $4, formula = $5, updated_at = NOW()
+		WHERE id = $6 AND entity_type = 'institution'
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+	`
+	var i models.Institution
+	var returnedFormula []byte
+	err = r.db.QueryRow(query, req.Name, req.Description, req.Color, req.IsCalculated, formulaJSON, id).Scan(
+		&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &returnedFormula, &i.CreatedAt, &i.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(returnedFormula) > 0 {
+		json.Unmarshal(returnedFormula, &i.Formula)
+	}
+	return &i, nil
+}
+
+func (r *AccountGroupRepository) ArchiveInstitution(id int) (*models.Institution, error) {
+	query := `
+		UPDATE account_groups
+		SET is_archived = true, updated_at = NOW()
+		WHERE id = $1 AND entity_type = 'institution'
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+	`
+	var i models.Institution
+	var formulaJSON []byte
+	err := r.db.QueryRow(query, id).Scan(
+		&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.CreatedAt, &i.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &i.Formula)
+	}
+	return &i, nil
+}
+
+func (r *AccountGroupRepository) UnarchiveInstitution(id int) (*models.Institution, error) {
+	query := `
+		UPDATE account_groups
+		SET is_archived = false, updated_at = NOW()
+		WHERE id = $1 AND entity_type = 'institution'
+		RETURNING id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+	`
+	var i models.Institution
+	var formulaJSON []byte
+	err := r.db.QueryRow(query, id).Scan(
+		&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.CreatedAt, &i.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &i.Formula)
+	}
+	return &i, nil
+}
+
+func (r *AccountGroupRepository) DeleteInstitution(id int) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete from account_group_memberships (accounts become unassigned from institution)
+	_, err = tx.Exec("DELETE FROM account_group_memberships WHERE group_id = $1", id)
+	if err != nil {
+		return err
+	}
+
+	// Delete the institution
+	result, err := tx.Exec("DELETE FROM account_groups WHERE id = $1 AND entity_type = 'institution'", id)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("institution not found")
+	}
+
+	return tx.Commit()
+}
+
+func (r *AccountGroupRepository) UpdateAccountPositionsInInstitution(institutionID int, positions []models.AccountPositionInGroup) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, p := range positions {
+		_, err := tx.Exec("UPDATE account_group_memberships SET position_in_group = $1 WHERE account_id = $2 AND group_id = $3", p.PositionInGroup, p.ID, institutionID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *AccountGroupRepository) GetInstitutionHistory(institutionID int) ([]models.GroupBalanceHistory, error) {
+	// Reuse the same history table since institutions are stored in account_groups
+	return r.GetHistory(institutionID)
 }

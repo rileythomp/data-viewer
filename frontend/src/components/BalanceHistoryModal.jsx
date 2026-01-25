@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { accountsApi, groupsApi } from '../services/api';
+import { accountsApi, groupsApi, institutionsApi } from '../services/api';
 import BalanceHistoryTable from './BalanceHistoryTable';
 import BalanceHistoryChart from './BalanceHistoryChart';
 
@@ -12,9 +12,14 @@ export default function BalanceHistoryModal({ entityType, entityId, entityName, 
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const data = entityType === 'account'
-                    ? await accountsApi.getHistory(entityId)
-                    : await groupsApi.getHistory(entityId);
+                let data;
+                if (entityType === 'account') {
+                    data = await accountsApi.getHistory(entityId);
+                } else if (entityType === 'institution') {
+                    data = await institutionsApi.getHistory(entityId);
+                } else {
+                    data = await groupsApi.getHistory(entityId);
+                }
                 setHistory(data || []);
             } catch (err) {
                 setError(err.message);
