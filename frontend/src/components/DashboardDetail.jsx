@@ -21,6 +21,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { dashboardsApi, accountsApi, groupsApi, institutionsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import BalanceHistoryModal from './BalanceHistoryModal';
+import BalanceHistoryTable from './BalanceHistoryTable';
+import BalanceHistoryChart from './BalanceHistoryChart';
 import InlineEditableText from './InlineEditableText';
 import MultiSelectDropdown from './MultiSelectDropdown';
 import DashboardFormulaDisplay from './DashboardFormulaDisplay';
@@ -63,6 +65,8 @@ export default function DashboardDetail() {
   const [error, setError] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
   const [viewingHistory, setViewingHistory] = useState(null);
+  const [dashboardHistory, setDashboardHistory] = useState([]);
+  const [dashboardHistoryViewMode, setDashboardHistoryViewMode] = useState('table');
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   const [allAccounts, setAllAccounts] = useState([]);
   const [allGroups, setAllGroups] = useState([]);
@@ -133,9 +137,19 @@ export default function DashboardDetail() {
     }
   };
 
+  const fetchDashboardHistory = async () => {
+    try {
+      const data = await dashboardsApi.getHistory(id);
+      setDashboardHistory(data || []);
+    } catch (err) {
+      // History might not exist yet, that's okay
+    }
+  };
+
   useEffect(() => {
     fetchDashboard();
     fetchSelectionData();
+    fetchDashboardHistory();
   }, [id]);
 
   const formatCurrency = (amount) => {
@@ -717,6 +731,37 @@ export default function DashboardDetail() {
           </DragOverlay>
         </DndContext>
       )}
+
+      <div className="detail-history" style={{ marginTop: 'var(--space-8)' }}>
+        <div className="history-header">
+          <h2 className="detail-section-title">Balance History</h2>
+          {dashboardHistory.length > 0 && (
+            <div className="view-toggle">
+              <button
+                className={`view-toggle-btn ${dashboardHistoryViewMode === 'table' ? 'active' : ''}`}
+                onClick={() => setDashboardHistoryViewMode('table')}
+              >
+                Table
+              </button>
+              <button
+                className={`view-toggle-btn ${dashboardHistoryViewMode === 'chart' ? 'active' : ''}`}
+                onClick={() => setDashboardHistoryViewMode('chart')}
+              >
+                Chart
+              </button>
+            </div>
+          )}
+        </div>
+        {dashboardHistory.length === 0 ? (
+          <p className="empty-state-small">No history records yet.</p>
+        ) : dashboardHistoryViewMode === 'table' ? (
+          <div className="history-table-container">
+            <BalanceHistoryTable history={dashboardHistory} showAccountName={false} />
+          </div>
+        ) : (
+          <BalanceHistoryChart history={dashboardHistory} />
+        )}
+      </div>
 
       {viewingHistory && (
         <BalanceHistoryModal

@@ -199,6 +199,27 @@ func (h *DashboardHandler) GetMain(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(dashboard)
 }
 
+func (h *DashboardHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid dashboard ID", http.StatusBadRequest)
+		return
+	}
+
+	history, err := h.repo.GetHistory(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if history == nil {
+		history = []models.DashboardBalanceHistory{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(history)
+}
+
 func (h *DashboardHandler) UpdateItemPositions(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
