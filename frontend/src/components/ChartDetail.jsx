@@ -62,6 +62,7 @@ export default function ChartDetail() {
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [viewMode, setViewMode] = useState('pie');
+  const [defaultChartType, setDefaultChartType] = useState('pie');
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -92,6 +93,10 @@ export default function ChartDetail() {
           .map(item => item.group.id) || [];
         setSelectedAccounts(accountIds);
         setSelectedGroups(groupIds);
+        // Set default chart type and use it as initial view mode
+        const chartDefaultType = data.default_chart_type || 'pie';
+        setDefaultChartType(chartDefaultType);
+        setViewMode(chartDefaultType);
       } else if (data.data_source === 'dataset' && data.dataset_config) {
         // Initialize dataset edit state from chart config
         setSelectedDataset(data.dataset_config.dataset_id);
@@ -171,7 +176,7 @@ export default function ChartDetail() {
       // For dataset charts, keep the dataset config when updating
       await chartsApi.update(id, name.trim(), chart.description, [], [], chart.dataset_config);
     } else {
-      await chartsApi.update(id, name.trim(), chart.description, selectedAccounts, selectedGroups);
+      await chartsApi.update(id, name.trim(), chart.description, selectedAccounts, selectedGroups, null, defaultChartType);
     }
     await fetchChart();
   };
@@ -180,23 +185,29 @@ export default function ChartDetail() {
     if (chart.data_source === 'dataset') {
       await chartsApi.update(id, chart.name, description || '', [], [], chart.dataset_config);
     } else {
-      await chartsApi.update(id, chart.name, description || '', selectedAccounts, selectedGroups);
+      await chartsApi.update(id, chart.name, description || '', selectedAccounts, selectedGroups, null, defaultChartType);
     }
     await fetchChart();
   };
 
   const handleAccountsChange = async (newSelection) => {
     setSelectedAccounts(newSelection);
-    await chartsApi.update(id, chart.name, chart.description, newSelection, selectedGroups);
+    await chartsApi.update(id, chart.name, chart.description, newSelection, selectedGroups, null, defaultChartType);
     await fetchChart();
     await fetchHistory();
   };
 
   const handleGroupsChange = async (newSelection) => {
     setSelectedGroups(newSelection);
-    await chartsApi.update(id, chart.name, chart.description, selectedAccounts, newSelection);
+    await chartsApi.update(id, chart.name, chart.description, selectedAccounts, newSelection, null, defaultChartType);
     await fetchChart();
     await fetchHistory();
+  };
+
+  const handleDefaultChartTypeChange = async (newType) => {
+    setDefaultChartType(newType);
+    await chartsApi.update(id, chart.name, chart.description, selectedAccounts, selectedGroups, null, newType);
+    await fetchChart();
   };
 
   // Dataset config update helpers
@@ -436,6 +447,26 @@ export default function ChartDetail() {
                 </>
               )}
             />
+          </div>
+
+          <div className="form-group">
+            <label>Default View</label>
+            <div className="toggle-group">
+              <button
+                type="button"
+                className={`toggle-btn ${defaultChartType === 'pie' ? 'active' : ''}`}
+                onClick={() => handleDefaultChartTypeChange('pie')}
+              >
+                Pie Chart
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn ${defaultChartType === 'line' ? 'active' : ''}`}
+                onClick={() => handleDefaultChartTypeChange('line')}
+              >
+                Line Chart
+              </button>
+            </div>
           </div>
         </div>
       )}

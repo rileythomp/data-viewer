@@ -88,6 +88,17 @@ func (h *ChartHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate and default the default_chart_type for accounts/groups charts
+	if !hasDatasetConfig {
+		if req.DefaultChartType == "" {
+			req.DefaultChartType = "pie" // Default to pie chart
+		}
+		if req.DefaultChartType != "pie" && req.DefaultChartType != "line" {
+			http.Error(w, "Default chart type must be 'pie' or 'line'", http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Validate dataset config if provided
 	if hasDatasetConfig {
 		if req.DatasetConfig.DatasetID == 0 {
@@ -156,6 +167,14 @@ func (h *ChartHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if hasDatasetConfig && hasAccountsGroups {
 		http.Error(w, "Cannot specify both dataset config and accounts/groups", http.StatusBadRequest)
 		return
+	}
+
+	// Validate default_chart_type for accounts/groups charts (only if provided)
+	if !hasDatasetConfig && req.DefaultChartType != "" {
+		if req.DefaultChartType != "pie" && req.DefaultChartType != "line" {
+			http.Error(w, "Default chart type must be 'pie' or 'line'", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Validate dataset config if provided

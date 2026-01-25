@@ -3,12 +3,13 @@ package models
 import "time"
 
 type Chart struct {
-	ID          int       `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Position    int       `json:"position"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID               int       `json:"id"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	Position         int       `json:"position"`
+	DefaultChartType string    `json:"default_chart_type"` // "pie" or "line" for accounts/groups charts
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type ChartItem struct {
@@ -44,8 +45,9 @@ type ChartWithItems struct {
 }
 
 type CreateChartRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	DefaultChartType string `json:"default_chart_type,omitempty"` // "pie" or "line" for accounts/groups charts
 	// Mode 1: Accounts + Groups (existing)
 	AccountIDs []int `json:"account_ids,omitempty"`
 	GroupIDs   []int `json:"group_ids,omitempty"`
@@ -54,8 +56,9 @@ type CreateChartRequest struct {
 }
 
 type UpdateChartRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	DefaultChartType string `json:"default_chart_type,omitempty"` // "pie" or "line" for accounts/groups charts
 	// Mode 1: Accounts + Groups (existing)
 	AccountIDs []int `json:"account_ids,omitempty"`
 	GroupIDs   []int `json:"group_ids,omitempty"`
