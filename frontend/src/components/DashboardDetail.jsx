@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Pencil, Trash2, Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { dashboardsApi, accountsApi, groupsApi } from '../services/api';
+import { dashboardsApi, accountsApi, groupsApi, institutionsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import BalanceHistoryModal from './BalanceHistoryModal';
 import InlineEditableText from './InlineEditableText';
@@ -18,8 +18,10 @@ export default function DashboardDetail() {
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   const [allAccounts, setAllAccounts] = useState([]);
   const [allGroups, setAllGroups] = useState([]);
+  const [allInstitutions, setAllInstitutions] = useState([]);
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
+  const [selectedInstitutions, setSelectedInstitutions] = useState([]);
 
   const fetchDashboard = async () => {
     try {
@@ -27,18 +29,22 @@ export default function DashboardDetail() {
       const data = await dashboardsApi.getById(id);
       setDashboard(data);
 
-      // Extract current account and group IDs from items
+      // Extract current account, group, and institution IDs from items
       const accountIds = data.items
         ?.filter(item => item.type === 'account')
         .map(item => item.account.id) || [];
       const groupIds = data.items
         ?.filter(item => item.type === 'group')
         .map(item => item.group.id) || [];
+      const institutionIds = data.items
+        ?.filter(item => item.type === 'institution')
+        .map(item => item.institution.id) || [];
       setSelectedAccounts(accountIds);
       setSelectedGroups(groupIds);
+      setSelectedInstitutions(institutionIds);
 
-      // Expand all groups by default
-      setExpandedGroups(new Set(groupIds));
+      // Expand all groups and institutions by default
+      setExpandedGroups(new Set([...groupIds, ...institutionIds.map(id => `inst-${id}`)]));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -48,12 +54,14 @@ export default function DashboardDetail() {
 
   const fetchSelectionData = async () => {
     try {
-      const [accountsData, groupsData] = await Promise.all([
+      const [accountsData, groupsData, institutionsData] = await Promise.all([
         accountsApi.getAll(),
         groupsApi.getAll(),
+        institutionsApi.getAll(),
       ]);
       setAllAccounts(accountsData || []);
       setAllGroups(groupsData || []);
+      setAllInstitutions(institutionsData || []);
     } catch (err) {
       // Silently fail - selection will just be empty
     }
@@ -73,24 +81,30 @@ export default function DashboardDetail() {
 
   const handleSaveName = async (name) => {
     if (!name.trim()) throw new Error('Dashboard name is required');
-    await dashboardsApi.update(id, name.trim(), dashboard.description, selectedAccounts, selectedGroups);
+    await dashboardsApi.update(id, name.trim(), dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions);
     await fetchDashboard();
   };
 
   const handleSaveDescription = async (description) => {
-    await dashboardsApi.update(id, dashboard.name, description || '', selectedAccounts, selectedGroups);
+    await dashboardsApi.update(id, dashboard.name, description || '', selectedAccounts, selectedGroups, selectedInstitutions);
     await fetchDashboard();
   };
 
   const handleAccountsChange = async (newSelection) => {
     setSelectedAccounts(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, newSelection, selectedGroups);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, newSelection, selectedGroups, selectedInstitutions);
     await fetchDashboard();
   };
 
   const handleGroupsChange = async (newSelection) => {
     setSelectedGroups(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, newSelection);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, newSelection, selectedInstitutions);
+    await fetchDashboard();
+  };
+
+  const handleInstitutionsChange = async (newSelection) => {
+    setSelectedInstitutions(newSelection);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, newSelection);
     await fetchDashboard();
   };
 
@@ -238,77 +252,168 @@ export default function DashboardDetail() {
               )}
             />
           </div>
+
+          <div className="form-group">
+            <label>Institutions</label>
+            <MultiSelectDropdown
+              items={allInstitutions}
+              selectedIds={selectedInstitutions}
+              onChange={handleInstitutionsChange}
+              placeholder="Select institutions..."
+              labelKey="name"
+              renderOption={(institution) => (
+                <>
+                  <div
+                    className="group-color-dot"
+                    style={{ backgroundColor: institution.color }}
+                  />
+                  <span>{institution.name}</span>
+                </>
+              )}
+              renderChip={(institution) => (
+                <>
+                  <div
+                    className="group-color-dot"
+                    style={{ backgroundColor: institution.color }}
+                  />
+                  <span>{institution.name}</span>
+                </>
+              )}
+            />
+          </div>
         </div>
       )}
 
       {!dashboard.items || dashboard.items.length === 0 ? (
-        <p className="empty-state">No items in this dashboard yet. Click edit to add accounts and groups.</p>
+        <p className="empty-state">No items in this dashboard yet. Click edit to add accounts, groups, and institutions.</p>
       ) : (
         <div className="list-container">
-          {dashboard.items.map((item) => (
-            item.type === 'account' ? (
-              <AccountCard
-                key={`account-${item.account.id}`}
-                account={item.account}
-                onUpdateBalance={handleUpdateBalance}
-                onViewHistory={setViewingHistory}
-              />
-            ) : (
-              <div key={`group-${item.group.id}`} className="group-card">
-                <div
-                  className="group-color-indicator"
-                  style={{ backgroundColor: item.group.color }}
+          {dashboard.items.map((item) => {
+            if (item.type === 'account') {
+              return (
+                <AccountCard
+                  key={`account-${item.account.id}`}
+                  account={item.account}
+                  onUpdateBalance={handleUpdateBalance}
+                  onViewHistory={setViewingHistory}
                 />
-                <div
-                  className="group-card-header"
-                  onClick={() => handleToggleExpand(item.group.id)}
-                >
-                  <div className="group-header-left">
-                    <button
-                      className="btn-icon btn-expand"
-                      aria-label={expandedGroups.has(item.group.id) ? 'Collapse group' : 'Expand group'}
-                    >
-                      {expandedGroups.has(item.group.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                    </button>
-                    <h3
-                      className="group-name"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/groups/${item.group.id}`);
-                      }}
-                      title="View group details"
-                    >
-                      {item.group.group_name}
-                    </h3>
-                    <span className="group-account-count">
-                      ({item.group.accounts?.length || 0} accounts)
-                    </span>
+              );
+            } else if (item.type === 'group') {
+              return (
+                <div key={`group-${item.group.id}`} className="group-card">
+                  <div
+                    className="group-color-indicator"
+                    style={{ backgroundColor: item.group.color }}
+                  />
+                  <div
+                    className="group-card-header"
+                    onClick={() => handleToggleExpand(item.group.id)}
+                  >
+                    <div className="group-header-left">
+                      <button
+                        className="btn-icon btn-expand"
+                        aria-label={expandedGroups.has(item.group.id) ? 'Collapse group' : 'Expand group'}
+                      >
+                        {expandedGroups.has(item.group.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                      </button>
+                      <h3
+                        className="group-name"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/groups/${item.group.id}`);
+                        }}
+                        title="View group details"
+                      >
+                        {item.group.group_name}
+                      </h3>
+                      <span className="group-account-count">
+                        ({item.group.accounts?.length || 0} accounts)
+                      </span>
+                    </div>
+                    <div className="group-header-right">
+                      <span className="group-total">{formatCurrency(item.group.total_balance)}</span>
+                    </div>
                   </div>
-                  <div className="group-header-right">
-                    <span className="group-total">{formatCurrency(item.group.total_balance)}</span>
-                  </div>
+                  {expandedGroups.has(item.group.id) && (
+                    <div className="group-content group-content-expanded">
+                      {item.group.accounts && item.group.accounts.length > 0 ? (
+                        <div className="group-accounts">
+                          {item.group.accounts.map((account) => (
+                            <AccountCard
+                              key={account.id}
+                              account={account}
+                              onUpdateBalance={handleUpdateBalance}
+                              onViewHistory={setViewingHistory}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="group-empty">No accounts in this group.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {expandedGroups.has(item.group.id) && (
-                  <div className="group-content group-content-expanded">
-                    {item.group.accounts && item.group.accounts.length > 0 ? (
-                      <div className="group-accounts">
-                        {item.group.accounts.map((account) => (
-                          <AccountCard
-                            key={account.id}
-                            account={account}
-                            onUpdateBalance={handleUpdateBalance}
-                            onViewHistory={setViewingHistory}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="group-empty">No accounts in this group.</p>
-                    )}
+              );
+            } else if (item.type === 'institution') {
+              const expandKey = `inst-${item.institution.id}`;
+              return (
+                <div key={`institution-${item.institution.id}`} className="group-card">
+                  <div
+                    className="group-color-indicator"
+                    style={{ backgroundColor: item.institution.color }}
+                  />
+                  <div
+                    className="group-card-header"
+                    onClick={() => handleToggleExpand(expandKey)}
+                  >
+                    <div className="group-header-left">
+                      <button
+                        className="btn-icon btn-expand"
+                        aria-label={expandedGroups.has(expandKey) ? 'Collapse institution' : 'Expand institution'}
+                      >
+                        {expandedGroups.has(expandKey) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                      </button>
+                      <h3
+                        className="group-name"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/institutions/${item.institution.id}`);
+                        }}
+                        title="View institution details"
+                      >
+                        {item.institution.name}
+                      </h3>
+                      <span className="group-account-count">
+                        ({item.institution.accounts?.length || 0} accounts)
+                      </span>
+                    </div>
+                    <div className="group-header-right">
+                      <span className="group-total">{formatCurrency(item.institution.total_balance)}</span>
+                    </div>
                   </div>
-                )}
-              </div>
-            )
-          ))}
+                  {expandedGroups.has(expandKey) && (
+                    <div className="group-content group-content-expanded">
+                      {item.institution.accounts && item.institution.accounts.length > 0 ? (
+                        <div className="group-accounts">
+                          {item.institution.accounts.map((account) => (
+                            <AccountCard
+                              key={account.id}
+                              account={account}
+                              onUpdateBalance={handleUpdateBalance}
+                              onViewHistory={setViewingHistory}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="group-empty">No accounts in this institution.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return null;
+          })}
         </div>
       )}
 

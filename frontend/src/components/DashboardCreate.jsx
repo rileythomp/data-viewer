@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { dashboardsApi, accountsApi, groupsApi } from '../services/api';
+import { dashboardsApi, accountsApi, groupsApi, institutionsApi } from '../services/api';
 import MultiSelectDropdown from './MultiSelectDropdown';
 
 export default function DashboardCreate() {
@@ -10,8 +10,10 @@ export default function DashboardCreate() {
   const [description, setDescription] = useState('');
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
+  const [selectedInstitutions, setSelectedInstitutions] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [institutions, setInstitutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -19,12 +21,14 @@ export default function DashboardCreate() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [accountsData, groupsData] = await Promise.all([
+        const [accountsData, groupsData, institutionsData] = await Promise.all([
           accountsApi.getAll(),
           groupsApi.getAll(),
+          institutionsApi.getAll(),
         ]);
         setAccounts(accountsData || []);
         setGroups(groupsData || []);
+        setInstitutions(institutionsData || []);
       } catch (err) {
         setError('Failed to load data');
       } finally {
@@ -65,7 +69,8 @@ export default function DashboardCreate() {
         name.trim(),
         description.trim(),
         selectedAccounts,
-        selectedGroups
+        selectedGroups,
+        selectedInstitutions
       );
       navigate(`/dashboards/${dashboard.id}`);
     } catch (err) {
@@ -154,6 +159,37 @@ export default function DashboardCreate() {
                       style={{ backgroundColor: group.color }}
                     />
                     <span>{group.group_name}</span>
+                  </>
+                )}
+              />
+            </div>
+          )}
+
+          {institutions.length > 0 && (
+            <div className="form-group">
+              <label>Institutions</label>
+              <MultiSelectDropdown
+                items={institutions}
+                selectedIds={selectedInstitutions}
+                onChange={setSelectedInstitutions}
+                placeholder="Select institutions..."
+                labelKey="name"
+                renderOption={(institution) => (
+                  <>
+                    <div
+                      className="group-color-dot"
+                      style={{ backgroundColor: institution.color }}
+                    />
+                    <span>{institution.name}</span>
+                  </>
+                )}
+                renderChip={(institution) => (
+                  <>
+                    <div
+                      className="group-color-dot"
+                      style={{ backgroundColor: institution.color }}
+                    />
+                    <span>{institution.name}</span>
                   </>
                 )}
               />

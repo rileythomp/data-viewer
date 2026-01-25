@@ -410,7 +410,7 @@ export const dashboardsApi = {
     return res.json();
   },
 
-  create: async (name, description, accountIds = [], groupIds = []) => {
+  create: async (name, description, accountIds = [], groupIds = [], institutionIds = []) => {
     const res = await fetch(`${API_BASE}/dashboards`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -419,13 +419,14 @@ export const dashboardsApi = {
         description,
         account_ids: accountIds,
         group_ids: groupIds,
+        institution_ids: institutionIds,
       }),
     });
     if (!res.ok) throw new Error('Failed to create dashboard');
     return res.json();
   },
 
-  update: async (id, name, description, accountIds = [], groupIds = []) => {
+  update: async (id, name, description, accountIds = [], groupIds = [], institutionIds = []) => {
     const res = await fetch(`${API_BASE}/dashboards/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -434,6 +435,7 @@ export const dashboardsApi = {
         description,
         account_ids: accountIds,
         group_ids: groupIds,
+        institution_ids: institutionIds,
       }),
     });
     if (!res.ok) throw new Error('Failed to update dashboard');

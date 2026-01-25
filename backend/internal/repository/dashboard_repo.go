@@ -129,6 +129,12 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 		return nil, fmt.Errorf("failed to get groups: %w", err)
 	}
 
+	// Get all institutions with their accounts
+	institutionsMap, err := r.getInstitutionsWithAccounts(accountMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get institutions: %w", err)
+	}
+
 	// Get dashboard items
 	itemsQuery := `
 		SELECT id, dashboard_id, item_type, item_id, position
@@ -167,6 +173,14 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 				})
 				totalBalance += group.TotalBalance
 			}
+		} else if di.ItemType == "institution" {
+			if institution, ok := institutionsMap[di.ItemID]; ok {
+				items = append(items, models.ListItem{
+					Type:        "institution",
+					Institution: institution,
+				})
+				totalBalance += institution.TotalBalance
+			}
 		}
 	}
 
@@ -178,11 +192,11 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 }
 
 func (r *DashboardRepository) getGroupsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.AccountGroupWithAccounts, error) {
-	// Get all non-archived groups
+	// Get all non-archived groups (excluding institutions)
 	groupsQuery := `
 		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
 		FROM account_groups
-		WHERE is_archived = false
+		WHERE is_archived = false AND entity_type = 'group'
 	`
 	groupRows, err := r.db.Query(groupsQuery)
 	if err != nil {
@@ -258,6 +272,89 @@ func (r *DashboardRepository) getGroupsWithAccounts(accountMap map[int]*models.A
 	return result, nil
 }
 
+func (r *DashboardRepository) getInstitutionsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.InstitutionWithAccounts, error) {
+	// Get all non-archived institutions
+	institutionsQuery := `
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		FROM account_groups
+		WHERE is_archived = false AND entity_type = 'institution'
+	`
+	institutionRows, err := r.db.Query(institutionsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer institutionRows.Close()
+
+	var institutions []models.Institution
+	for institutionRows.Next() {
+		var i models.Institution
+		var formulaJSON []byte
+		err := institutionRows.Scan(&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.CreatedAt, &i.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &i.Formula)
+		}
+		institutions = append(institutions, i)
+	}
+
+	// Get all institution memberships
+	membershipQuery := `
+		SELECT agm.account_id, agm.group_id, agm.position_in_group
+		FROM account_group_memberships agm
+		JOIN account_groups ag ON agm.group_id = ag.id
+		WHERE ag.entity_type = 'institution'
+		ORDER BY agm.group_id, agm.position_in_group
+	`
+	membershipRows, err := r.db.Query(membershipQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer membershipRows.Close()
+
+	institutionAccounts := make(map[int][]models.AccountInGroup)
+	for membershipRows.Next() {
+		var accountID, institutionID, positionInGroup int
+		if err := membershipRows.Scan(&accountID, &institutionID, &positionInGroup); err != nil {
+			return nil, err
+		}
+		if acc, ok := accountMap[accountID]; ok {
+			institutionAccounts[institutionID] = append(institutionAccounts[institutionID], models.AccountInGroup{
+				Account:         *acc,
+				PositionInGroup: positionInGroup,
+			})
+		}
+	}
+
+	// Build institutions with accounts and calculate balances
+	result := make(map[int]*models.InstitutionWithAccounts)
+	for _, inst := range institutions {
+		accounts := institutionAccounts[inst.ID]
+
+		var totalBalance float64
+		if inst.IsCalculated && len(inst.Formula) > 0 {
+			for _, item := range inst.Formula {
+				if acc, ok := accountMap[item.AccountID]; ok {
+					totalBalance += item.Coefficient * acc.CurrentBalance
+				}
+			}
+		} else {
+			for _, a := range accounts {
+				totalBalance += a.CurrentBalance
+			}
+		}
+
+		result[inst.ID] = &models.InstitutionWithAccounts{
+			Institution:  inst,
+			TotalBalance: totalBalance,
+			Accounts:     accounts,
+		}
+	}
+
+	return result, nil
+}
+
 func (r *DashboardRepository) Create(req *models.CreateDashboardRequest) (*models.DashboardWithItems, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -310,6 +407,16 @@ func (r *DashboardRepository) Create(req *models.CreateDashboardRequest) (*model
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to add group to dashboard: %w", err)
+		}
+	}
+	for _, institutionID := range req.InstitutionIDs {
+		position++
+		_, err = tx.Exec(
+			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+			d.ID, "institution", institutionID, position,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add institution to dashboard: %w", err)
 		}
 	}
 
@@ -371,6 +478,16 @@ func (r *DashboardRepository) Update(id int, req *models.UpdateDashboardRequest)
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to add group to dashboard: %w", err)
+		}
+	}
+	for _, institutionID := range req.InstitutionIDs {
+		position++
+		_, err = tx.Exec(
+			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+			id, "institution", institutionID, position,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add institution to dashboard: %w", err)
 		}
 	}
 

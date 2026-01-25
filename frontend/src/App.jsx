@@ -1,11 +1,11 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { Agentation } from 'agentation'
 import { ThemeProvider } from './context/ThemeContext'
 import './App.css'
 import NavBar from './components/NavBar'
 import AccountList from './components/AccountList'
 import AccountDetail from './components/AccountDetail'
 import GroupDetail from './components/GroupDetail'
-import InstitutionList from './components/InstitutionList'
 import InstitutionDetail from './components/InstitutionDetail'
 import SettingsPage from './components/SettingsPage'
 import DashboardList from './components/DashboardList'
@@ -30,7 +30,6 @@ function App() {
           <Route path="/" element={<AccountList />} />
           <Route path="/accounts/:id" element={<AccountDetail />} />
           <Route path="/groups/:id" element={<GroupDetail />} />
-          <Route path="/institutions" element={<InstitutionList />} />
           <Route path="/institutions/:id" element={<InstitutionDetail />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/dashboards" element={<DashboardList />} />
@@ -46,6 +45,7 @@ function App() {
           <Route path="/datasets/new" element={<DatasetCreate />} />
           <Route path="/datasets/:id" element={<DatasetDetail />} />
         </Routes>
+        {import.meta.env.DEV && <Agentation />}
       </BrowserRouter>
     </ThemeProvider>
   )

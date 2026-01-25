@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -20,8 +20,6 @@ import { Settings } from 'lucide-react';
 import { listApi, accountsApi, groupsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import GroupCard, { GroupCardPreview } from './GroupCard';
-import SortControls from './SortControls';
-import AccountForm from './AccountForm';
 import GroupForm from './GroupForm';
 import EditAccountModal from './EditAccountModal';
 import BalanceHistoryModal from './BalanceHistoryModal';
@@ -56,17 +54,12 @@ export default function AccountList() {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showAddAccountForm, setShowAddAccountForm] = useState(false);
-  const [showAddGroupForm, setShowAddGroupForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [editingGroup, setEditingGroup] = useState(null);
   const [viewingHistory, setViewingHistory] = useState(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   const [activeGroup, setActiveGroup] = useState(null);
-  const [sortOrder, setSortOrder] = useState(() => {
-    return localStorage.getItem('groupSortOrder') || 'custom';
-  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -78,42 +71,6 @@ export default function AccountList() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-
-  // Handle sort order change
-  const handleSortChange = useCallback((newSortOrder) => {
-    setSortOrder(newSortOrder);
-    localStorage.setItem('groupSortOrder', newSortOrder);
-  }, []);
-
-  // Compute sorted items based on sort selection
-  const sortedItems = useMemo(() => {
-    if (sortOrder === 'custom') {
-      return listData.items;
-    }
-
-    const itemsCopy = [...listData.items];
-
-    const getGroupName = (item) => item.group?.group_name?.toLowerCase() || '';
-    const getAccountName = (item) => item.account?.account_name?.toLowerCase() || '';
-    const getGroupValue = (item) => item.group?.total_balance || 0;
-    const getAccountValue = (item) => item.account?.current_balance || 0;
-
-    const getName = (item) => item.type === 'group' ? getGroupName(item) : getAccountName(item);
-    const getValue = (item) => item.type === 'group' ? getGroupValue(item) : getAccountValue(item);
-
-    switch (sortOrder) {
-      case 'name-asc':
-        return itemsCopy.sort((a, b) => getName(a).localeCompare(getName(b)));
-      case 'name-desc':
-        return itemsCopy.sort((a, b) => getName(b).localeCompare(getName(a)));
-      case 'value-asc':
-        return itemsCopy.sort((a, b) => getValue(a) - getValue(b));
-      case 'value-desc':
-        return itemsCopy.sort((a, b) => getValue(b) - getValue(a));
-      default:
-        return itemsCopy;
-    }
-  }, [listData.items, sortOrder]);
 
   const fetchData = async (isInitialLoad = false) => {
     try {
@@ -220,28 +177,6 @@ export default function AccountList() {
     }
   };
 
-  const handleCreateAccount = async (name, info, balance, calculatedData, groupId) => {
-    const newAccount = await accountsApi.create(name, info, balance, calculatedData);
-    // If a group was selected, add the account to the group
-    if (groupId) {
-      await accountsApi.modifyGroupMembership(newAccount.id, 'add', groupId);
-    }
-    await fetchData();
-    setShowAddAccountForm(false);
-  };
-
-  const handleCreateGroup = async (name, description, color, isCalculated, formula, accountIds = []) => {
-    const newGroup = await groupsApi.create(name, description, color, isCalculated, formula);
-
-    // Add selected accounts to the new group
-    for (let i = 0; i < accountIds.length; i++) {
-      await accountsApi.modifyGroupMembership(accountIds[i], 'add', newGroup.id, null, i + 1);
-    }
-
-    await fetchData();
-    setShowAddGroupForm(false);
-  };
-
   const handleUpdateAccount = async (id, name, info) => {
     await accountsApi.updateName(id, name);
     await accountsApi.updateInfo(id, info);
@@ -302,11 +237,9 @@ export default function AccountList() {
   }
 
   // Only groups are sortable now
-  const sortableGroupIds = sortedItems
+  const sortableGroupIds = listData.items
     .filter((item) => item.type === 'group')
     .map((item) => `group-${item.group.id}`);
-
-  const isSortable = sortOrder === 'custom';
 
   return (
     <div className="app">
@@ -323,47 +256,9 @@ export default function AccountList() {
             </button>
           </div>
         </div>
-        <div className="header-actions">
-          <SortControls sortOrder={sortOrder} onSortChange={handleSortChange} />
-          <button
-            onClick={() => {
-              setShowAddGroupForm(!showAddGroupForm);
-              setShowAddAccountForm(false);
-            }}
-            className="btn-secondary"
-          >
-            {showAddGroupForm ? 'Cancel' : '+ Add Group'}
-          </button>
-          <button
-            onClick={() => {
-              setShowAddAccountForm(!showAddAccountForm);
-              setShowAddGroupForm(false);
-            }}
-            className="btn-primary"
-          >
-            {showAddAccountForm ? 'Cancel' : '+ Add Account'}
-          </button>
-        </div>
       </div>
 
       {error && <div className="error">{error}</div>}
-
-      {showAddGroupForm && (
-        <GroupForm
-          onSubmit={handleCreateGroup}
-          onCancel={() => setShowAddGroupForm(false)}
-          allAccounts={allAccounts}
-        />
-      )}
-
-      {showAddAccountForm && (
-        <AccountForm
-          onSubmit={handleCreateAccount}
-          onCancel={() => setShowAddAccountForm(false)}
-          accounts={allAccounts}
-          groups={groups}
-        />
-      )}
 
       {listData.items.length === 0 ? (
         <p className="empty-state">No accounts or groups yet. Add your first one to get started!</p>
@@ -377,7 +272,7 @@ export default function AccountList() {
         >
           <SortableContext items={sortableGroupIds} strategy={verticalListSortingStrategy}>
             <div className="list-container">
-              {sortedItems.map((item) =>
+              {listData.items.map((item) =>
                 item.type === 'group' ? (
                   <SortableGroup key={`group-${item.group.id}`} group={item.group}>
                     <GroupCard
@@ -387,7 +282,7 @@ export default function AccountList() {
                       onEdit={setEditingGroup}
                       onUpdateBalance={handleUpdateBalance}
                       onViewHistory={setViewingHistory}
-                      sortable={isSortable}
+                      sortable={true}
                     />
                   </SortableGroup>
                 ) : (

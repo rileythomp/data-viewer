@@ -14,7 +14,7 @@ type Dashboard struct {
 type DashboardItem struct {
 	ID          int       `json:"id"`
 	DashboardID int       `json:"dashboard_id"`
-	ItemType    string    `json:"item_type"` // "account" or "group"
+	ItemType    string    `json:"item_type"` // "account", "group", or "institution"
 	ItemID      int       `json:"item_id"`
 	Position    int       `json:"position"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -27,17 +27,19 @@ type DashboardWithItems struct {
 }
 
 type CreateDashboardRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	AccountIDs  []int  `json:"account_ids"`
-	GroupIDs    []int  `json:"group_ids"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	AccountIDs     []int  `json:"account_ids"`
+	GroupIDs       []int  `json:"group_ids"`
+	InstitutionIDs []int  `json:"institution_ids"`
 }
 
 type UpdateDashboardRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	AccountIDs  []int  `json:"account_ids"`
-	GroupIDs    []int  `json:"group_ids"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	AccountIDs     []int  `json:"account_ids"`
+	GroupIDs       []int  `json:"group_ids"`
+	InstitutionIDs []int  `json:"institution_ids"`
 }
 
 type DashboardListResponse struct {
