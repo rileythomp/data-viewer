@@ -80,12 +80,13 @@ type AccountPositionInGroup struct {
 	PositionInGroup int `json:"position_in_group"`
 }
 
-// ListItem represents either a group, institution, or an ungrouped account in the main list
+// ListItem represents either a group, institution, chart, or an ungrouped account in the main list
 type ListItem struct {
-	Type        string                    `json:"type"` // "group", "account", or "institution"
+	Type        string                    `json:"type"` // "group", "account", "institution", or "chart"
 	Group       *AccountGroupWithAccounts `json:"group,omitempty"`
 	Account     *Account                  `json:"account,omitempty"`
 	Institution *InstitutionWithAccounts  `json:"institution,omitempty"`
+	Chart       *ChartWithItems           `json:"chart,omitempty"`
 }
 
 type GroupedAccountsResponse struct {

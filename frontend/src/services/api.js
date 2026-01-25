@@ -410,13 +410,14 @@ export const dashboardsApi = {
     return res.json();
   },
 
-  create: async (name, description, accountIds = [], groupIds = [], institutionIds = [], isCalculated = false, formula = null) => {
+  create: async (name, description, accountIds = [], groupIds = [], institutionIds = [], chartIds = [], isCalculated = false, formula = null) => {
     const payload = {
       name,
       description,
       account_ids: accountIds,
       group_ids: groupIds,
       institution_ids: institutionIds,
+      chart_ids: chartIds,
       is_calculated: isCalculated,
     };
     if (isCalculated && formula) {
@@ -431,13 +432,14 @@ export const dashboardsApi = {
     return res.json();
   },
 
-  update: async (id, name, description, accountIds = [], groupIds = [], institutionIds = [], isCalculated = false, formula = null) => {
+  update: async (id, name, description, accountIds = [], groupIds = [], institutionIds = [], chartIds = [], isCalculated = false, formula = null) => {
     const payload = {
       name,
       description,
       account_ids: accountIds,
       group_ids: groupIds,
       institution_ids: institutionIds,
+      chart_ids: chartIds,
       is_calculated: isCalculated,
     };
     if (isCalculated && formula) {
@@ -512,7 +514,7 @@ export const chartsApi = {
     return res.json();
   },
 
-  create: async (name, description, accountIds = [], groupIds = [], datasetConfig = null) => {
+  create: async (name, description, accountIds = [], groupIds = [], datasetConfig = null, defaultChartType = null) => {
     const payload = {
       name,
       description,
@@ -523,6 +525,9 @@ export const chartsApi = {
     } else {
       payload.account_ids = accountIds;
       payload.group_ids = groupIds;
+      if (defaultChartType) {
+        payload.default_chart_type = defaultChartType;
+      }
     }
 
     const res = await fetch(`${API_BASE}/charts`, {
@@ -534,7 +539,7 @@ export const chartsApi = {
     return res.json();
   },
 
-  update: async (id, name, description, accountIds = [], groupIds = [], datasetConfig = null) => {
+  update: async (id, name, description, accountIds = [], groupIds = [], datasetConfig = null, defaultChartType = null) => {
     const payload = {
       name,
       description,
@@ -545,6 +550,9 @@ export const chartsApi = {
     } else {
       payload.account_ids = accountIds;
       payload.group_ids = groupIds;
+      if (defaultChartType) {
+        payload.default_chart_type = defaultChartType;
+      }
     }
 
     const res = await fetch(`${API_BASE}/charts/${id}`, {

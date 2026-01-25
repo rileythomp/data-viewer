@@ -37,7 +37,7 @@ func (r *ChartRepository) GetAll(page, pageSize int) (*models.ChartListResponse,
 	// Get paginated charts
 	offset := (page - 1) * pageSize
 	query := `
-		SELECT id, name, description, position, created_at, updated_at
+		SELECT id, name, description, position, default_chart_type, created_at, updated_at
 		FROM charts
 		ORDER BY position ASC, name ASC
 		LIMIT $1 OFFSET $2
@@ -51,7 +51,7 @@ func (r *ChartRepository) GetAll(page, pageSize int) (*models.ChartListResponse,
 	var charts []models.ChartWithItems
 	for rows.Next() {
 		var c models.Chart
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.Position, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.Position, &c.DefaultChartType, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan chart: %w", err)
 		}
 
@@ -73,12 +73,12 @@ func (r *ChartRepository) GetAll(page, pageSize int) (*models.ChartListResponse,
 
 func (r *ChartRepository) GetByID(id int) (*models.Chart, error) {
 	query := `
-		SELECT id, name, description, position, created_at, updated_at
+		SELECT id, name, description, position, default_chart_type, created_at, updated_at
 		FROM charts
 		WHERE id = $1
 	`
 	var c models.Chart
-	err := r.db.QueryRow(query, id).Scan(&c.ID, &c.Name, &c.Description, &c.Position, &c.CreatedAt, &c.UpdatedAt)
+	err := r.db.QueryRow(query, id).Scan(&c.ID, &c.Name, &c.Description, &c.Position, &c.DefaultChartType, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -670,13 +670,17 @@ func (r *ChartRepository) Create(req *models.CreateChartRequest) (*models.ChartW
 
 	// Insert chart
 	query := `
-		INSERT INTO charts (name, description, position)
-		VALUES ($1, $2, $3)
-		RETURNING id, name, description, position, created_at, updated_at
+		INSERT INTO charts (name, description, position, default_chart_type)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, name, description, position, default_chart_type, created_at, updated_at
 	`
+	defaultChartType := req.DefaultChartType
+	if defaultChartType == "" {
+		defaultChartType = "pie" // Default to pie for accounts/groups charts
+	}
 	var c models.Chart
-	err = tx.QueryRow(query, req.Name, req.Description, newPos).Scan(
-		&c.ID, &c.Name, &c.Description, &c.Position, &c.CreatedAt, &c.UpdatedAt,
+	err = tx.QueryRow(query, req.Name, req.Description, newPos, defaultChartType).Scan(
+		&c.ID, &c.Name, &c.Description, &c.Position, &c.DefaultChartType, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chart: %w", err)
@@ -728,16 +732,31 @@ func (r *ChartRepository) Update(id int, req *models.UpdateChartRequest) (*model
 	defer tx.Rollback()
 
 	// Update chart metadata
-	query := `
-		UPDATE charts
-		SET name = $1, description = $2, updated_at = NOW()
-		WHERE id = $3
-		RETURNING id, name, description, position, created_at, updated_at
-	`
+	// If default_chart_type is provided, update it; otherwise keep existing value
+	var query string
 	var c models.Chart
-	err = tx.QueryRow(query, req.Name, req.Description, id).Scan(
-		&c.ID, &c.Name, &c.Description, &c.Position, &c.CreatedAt, &c.UpdatedAt,
-	)
+
+	if req.DefaultChartType != "" {
+		query = `
+			UPDATE charts
+			SET name = $1, description = $2, default_chart_type = $3, updated_at = NOW()
+			WHERE id = $4
+			RETURNING id, name, description, position, default_chart_type, created_at, updated_at
+		`
+		err = tx.QueryRow(query, req.Name, req.Description, req.DefaultChartType, id).Scan(
+			&c.ID, &c.Name, &c.Description, &c.Position, &c.DefaultChartType, &c.CreatedAt, &c.UpdatedAt,
+		)
+	} else {
+		query = `
+			UPDATE charts
+			SET name = $1, description = $2, updated_at = NOW()
+			WHERE id = $3
+			RETURNING id, name, description, position, default_chart_type, created_at, updated_at
+		`
+		err = tx.QueryRow(query, req.Name, req.Description, id).Scan(
+			&c.ID, &c.Name, &c.Description, &c.Position, &c.DefaultChartType, &c.CreatedAt, &c.UpdatedAt,
+		)
+	}
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

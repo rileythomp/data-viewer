@@ -17,6 +17,7 @@ export default function ChartCreate() {
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [defaultChartType, setDefaultChartType] = useState('pie'); // Default view type for accounts/groups charts
 
   // Dataset mode state (new)
   const [datasets, setDatasets] = useState([]);
@@ -152,7 +153,9 @@ export default function ChartCreate() {
           name.trim(),
           description.trim(),
           selectedAccounts,
-          selectedGroups
+          selectedGroups,
+          null,
+          defaultChartType
         );
       }
 
@@ -271,6 +274,26 @@ export default function ChartCreate() {
                   />
                 </div>
               )}
+
+              <div className="form-group">
+                <label>Default View</label>
+                <div className="toggle-group">
+                  <button
+                    type="button"
+                    className={`toggle-btn ${defaultChartType === 'pie' ? 'active' : ''}`}
+                    onClick={() => setDefaultChartType('pie')}
+                  >
+                    Pie Chart
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn ${defaultChartType === 'line' ? 'active' : ''}`}
+                    onClick={() => setDefaultChartType('line')}
+                  >
+                    Line Chart
+                  </button>
+                </div>
+              </div>
             </>
           ) : (
             <>
