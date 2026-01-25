@@ -398,6 +398,11 @@ func (r *AccountRepository) UpdateBalance(id int, balance float64) (*models.Acco
 		return nil, fmt.Errorf("failed to fetch accounts for dependency propagation: %w", err)
 	}
 
+	// Resolve calculated account balances before building balanceMap.
+	// This ensures all calculated accounts have their correct formula-derived values,
+	// not the stale/arbitrary values stored in the database.
+	ResolveCalculatedBalances(allAccounts)
+
 	dependentIDs := validation.FindTransitiveDependents(id, allAccounts)
 
 	// Build account map and balance map (needed for both account and group propagation)

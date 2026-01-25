@@ -1,20 +1,28 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { institutionsApi } from '../services/api';
+import { institutionsApi, accountsApi } from '../services/api';
 import InstitutionForm from './InstitutionForm';
+import InstitutionCard from './InstitutionCard';
+import BalanceHistoryModal from './BalanceHistoryModal';
 
 export default function InstitutionList() {
-  const navigate = useNavigate();
   const [institutions, setInstitutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [expandedInstitutions, setExpandedInstitutions] = useState(new Set());
+  const [viewingHistory, setViewingHistory] = useState(null);
 
-  const fetchInstitutions = async () => {
+  const fetchInstitutions = async (isInitialLoad = false) => {
     try {
       setError('');
       const data = await institutionsApi.getAll();
       setInstitutions(data || []);
+
+      // On initial load, expand all institutions by default
+      if (isInitialLoad) {
+        const allInstitutionIds = (data || []).map((inst) => inst.id);
+        setExpandedInstitutions(new Set(allInstitutionIds));
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -23,19 +31,29 @@ export default function InstitutionList() {
   };
 
   useEffect(() => {
-    fetchInstitutions();
+    fetchInstitutions(true);
   }, []);
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
+  const handleToggleExpand = (institutionId) => {
+    setExpandedInstitutions((prev) => {
+      const next = new Set(prev);
+      if (next.has(institutionId)) {
+        next.delete(institutionId);
+      } else {
+        next.add(institutionId);
+      }
+      return next;
+    });
   };
 
   const handleCreate = async (name, description, color, isCalculated, formula) => {
     await institutionsApi.create(name, description, color, isCalculated, formula);
     setShowForm(false);
+    await fetchInstitutions();
+  };
+
+  const handleUpdateBalance = async (id, balance) => {
+    await accountsApi.updateBalance(id, balance);
     await fetchInstitutions();
   };
 
@@ -75,31 +93,27 @@ export default function InstitutionList() {
       {institutions.length === 0 ? (
         <p className="empty-state">No institutions yet. Create your first one to get started!</p>
       ) : (
-        <div className="dashboard-list">
+        <div className="list-container">
           {institutions.map((institution) => (
-            <div
+            <InstitutionCard
               key={institution.id}
-              className="dashboard-card"
-              onClick={() => navigate(`/institutions/${institution.id}`)}
-            >
-              <div className="dashboard-card-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div
-                    className="group-color-dot"
-                    style={{ backgroundColor: institution.color }}
-                  />
-                  <h3 className="dashboard-card-name">{institution.name}</h3>
-                </div>
-                <span className="dashboard-card-balance">
-                  {formatCurrency(institution.total_balance || 0)}
-                </span>
-              </div>
-              {institution.description && (
-                <p className="dashboard-card-description">{institution.description}</p>
-              )}
-            </div>
+              institution={institution}
+              isExpanded={expandedInstitutions.has(institution.id)}
+              onToggleExpand={handleToggleExpand}
+              onUpdateBalance={handleUpdateBalance}
+              onViewHistory={setViewingHistory}
+            />
           ))}
         </div>
+      )}
+
+      {viewingHistory && (
+        <BalanceHistoryModal
+          entityType="account"
+          entityId={viewingHistory.id}
+          entityName={viewingHistory.account_name}
+          onClose={() => setViewingHistory(null)}
+        />
       )}
     </div>
   );

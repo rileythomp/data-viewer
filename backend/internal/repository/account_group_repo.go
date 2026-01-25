@@ -630,7 +630,7 @@ func (r *AccountGroupRepository) GetHistory(groupID int) ([]models.GroupBalanceH
 
 // Institution methods - institutions are stored in account_groups with entity_type = 'institution'
 
-func (r *AccountGroupRepository) GetAllInstitutions() ([]models.Institution, error) {
+func (r *AccountGroupRepository) GetAllInstitutions() ([]models.InstitutionWithAccounts, error) {
 	query := `
 		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
 		FROM account_groups
@@ -660,9 +660,9 @@ func (r *AccountGroupRepository) GetAllInstitutions() ([]models.Institution, err
 		return nil, err
 	}
 
-	// Get all accounts to calculate balances
+	// Get all accounts with full details
 	allAccountsQuery := `
-		SELECT id, account_name, current_balance, is_calculated, formula
+		SELECT id, account_name, account_info, current_balance, is_archived, position, is_calculated, formula, created_at, updated_at
 		FROM account_balances
 		WHERE is_archived = false
 	`
@@ -676,13 +676,14 @@ func (r *AccountGroupRepository) GetAllInstitutions() ([]models.Institution, err
 	for accountRows.Next() {
 		var a models.Account
 		var formulaJSON []byte
-		err := accountRows.Scan(&a.ID, &a.AccountName, &a.CurrentBalance, &a.IsCalculated, &formulaJSON)
+		err := accountRows.Scan(&a.ID, &a.AccountName, &a.AccountInfo, &a.CurrentBalance, &a.IsArchived, &a.Position, &a.IsCalculated, &formulaJSON, &a.CreatedAt, &a.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		if len(formulaJSON) > 0 {
 			json.Unmarshal(formulaJSON, &a.Formula)
 		}
+		a.GroupIDs = []int{}
 		allAccounts = append(allAccounts, a)
 	}
 	if err := accountRows.Err(); err != nil {
@@ -692,19 +693,20 @@ func (r *AccountGroupRepository) GetAllInstitutions() ([]models.Institution, err
 	// Resolve calculated account balances
 	ResolveCalculatedBalances(allAccounts)
 
-	// Build account lookup map
-	accountMap := make(map[int]float64)
-	for _, a := range allAccounts {
-		accountMap[a.ID] = a.CurrentBalance
+	// Build account lookup map (full account objects)
+	accountMap := make(map[int]*models.Account)
+	for i := range allAccounts {
+		accountMap[allAccounts[i].ID] = &allAccounts[i]
 	}
 
-	// Get all institution memberships
+	// Get all institution memberships with position
 	membershipQuery := `
-		SELECT agm.group_id, agm.account_id
+		SELECT agm.group_id, agm.account_id, agm.position_in_group
 		FROM account_group_memberships agm
 		JOIN account_groups ag ON agm.group_id = ag.id
 		JOIN account_balances ab ON agm.account_id = ab.id
 		WHERE ag.entity_type = 'institution' AND ag.is_archived = false AND ab.is_archived = false
+		ORDER BY agm.group_id, agm.position_in_group ASC
 	`
 	membershipRows, err := r.db.Query(membershipQuery)
 	if err != nil {
@@ -712,44 +714,55 @@ func (r *AccountGroupRepository) GetAllInstitutions() ([]models.Institution, err
 	}
 	defer membershipRows.Close()
 
-	// Map institution ID -> list of account IDs
-	institutionAccounts := make(map[int][]int)
+	// Map institution ID -> list of AccountInGroup
+	institutionAccounts := make(map[int][]models.AccountInGroup)
 	for membershipRows.Next() {
-		var groupID, accountID int
-		if err := membershipRows.Scan(&groupID, &accountID); err != nil {
+		var groupID, accountID, positionInGroup int
+		if err := membershipRows.Scan(&groupID, &accountID, &positionInGroup); err != nil {
 			return nil, err
 		}
-		institutionAccounts[groupID] = append(institutionAccounts[groupID], accountID)
+		if acc, ok := accountMap[accountID]; ok {
+			institutionAccounts[groupID] = append(institutionAccounts[groupID], models.AccountInGroup{
+				Account:         *acc,
+				PositionInGroup: positionInGroup,
+			})
+		}
 	}
 	if err := membershipRows.Err(); err != nil {
 		return nil, err
 	}
 
-	// Calculate total balance for each institution
-	for idx := range institutions {
-		inst := &institutions[idx]
+	// Build result with accounts and total balances
+	var result []models.InstitutionWithAccounts
+	for _, inst := range institutions {
+		var totalBalance float64
 		if inst.IsCalculated && len(inst.Formula) > 0 {
 			// Use formula to calculate balance
-			var total float64
 			for _, item := range inst.Formula {
-				if balance, ok := accountMap[item.AccountID]; ok {
-					total += balance * float64(item.Coefficient)
+				if acc, ok := accountMap[item.AccountID]; ok {
+					totalBalance += acc.CurrentBalance * item.Coefficient
 				}
 			}
-			inst.TotalBalance = total
 		} else {
 			// Sum balances of member accounts
-			var total float64
-			for _, accountID := range institutionAccounts[inst.ID] {
-				if balance, ok := accountMap[accountID]; ok {
-					total += balance
-				}
+			for _, accInGroup := range institutionAccounts[inst.ID] {
+				totalBalance += accInGroup.CurrentBalance
 			}
-			inst.TotalBalance = total
 		}
+
+		accounts := institutionAccounts[inst.ID]
+		if accounts == nil {
+			accounts = []models.AccountInGroup{}
+		}
+
+		result = append(result, models.InstitutionWithAccounts{
+			Institution:  inst,
+			TotalBalance: totalBalance,
+			Accounts:     accounts,
+		})
 	}
 
-	return institutions, nil
+	return result, nil
 }
 
 func (r *AccountGroupRepository) GetAllInstitutionsIncludingArchived() ([]models.Institution, error) {
