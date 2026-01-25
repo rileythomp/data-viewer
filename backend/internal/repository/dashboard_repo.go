@@ -27,7 +27,7 @@ func (r *DashboardRepository) GetAll(page, pageSize int) (*models.DashboardListR
 	// Get paginated dashboards
 	offset := (page - 1) * pageSize
 	query := `
-		SELECT id, name, description, position, created_at, updated_at
+		SELECT id, name, description, position, is_main, created_at, updated_at
 		FROM dashboards
 		ORDER BY position ASC, name ASC
 		LIMIT $1 OFFSET $2
@@ -41,7 +41,7 @@ func (r *DashboardRepository) GetAll(page, pageSize int) (*models.DashboardListR
 	var dashboards []models.DashboardWithItems
 	for rows.Next() {
 		var d models.Dashboard
-		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.IsMain, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan dashboard: %w", err)
 		}
 
@@ -63,12 +63,12 @@ func (r *DashboardRepository) GetAll(page, pageSize int) (*models.DashboardListR
 
 func (r *DashboardRepository) GetByID(id int) (*models.Dashboard, error) {
 	query := `
-		SELECT id, name, description, position, created_at, updated_at
+		SELECT id, name, description, position, is_main, created_at, updated_at
 		FROM dashboards
 		WHERE id = $1
 	`
 	var d models.Dashboard
-	err := r.db.QueryRow(query, id).Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt)
+	err := r.db.QueryRow(query, id).Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.IsMain, &d.CreatedAt, &d.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -513,4 +513,58 @@ func (r *DashboardRepository) Delete(id int) error {
 	}
 
 	return nil
+}
+
+func (r *DashboardRepository) SetMain(id int, isMain bool) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if isMain {
+		// First, unset any existing main dashboard
+		_, err = tx.Exec("UPDATE dashboards SET is_main = FALSE WHERE is_main = TRUE")
+		if err != nil {
+			return fmt.Errorf("failed to unset existing main dashboard: %w", err)
+		}
+	}
+
+	// Set the new main dashboard status
+	result, err := tx.Exec("UPDATE dashboards SET is_main = $1, updated_at = NOW() WHERE id = $2", isMain, id)
+	if err != nil {
+		return fmt.Errorf("failed to set main dashboard: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("dashboard not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (r *DashboardRepository) GetMain() (*models.DashboardWithItems, error) {
+	query := `
+		SELECT id, name, description, position, is_main, created_at, updated_at
+		FROM dashboards
+		WHERE is_main = TRUE
+	`
+	var d models.Dashboard
+	err := r.db.QueryRow(query).Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.IsMain, &d.CreatedAt, &d.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get main dashboard: %w", err)
+	}
+
+	return r.GetWithItems(d.ID)
 }

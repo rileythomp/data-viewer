@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { dashboardsApi } from '../services/api';
 
 export default function DashboardList() {
@@ -34,6 +34,17 @@ export default function DashboardList() {
       style: 'currency',
       currency: 'USD',
     }).format(amount);
+  };
+
+  const handleToggleMain = async (id, isMain) => {
+    try {
+      setError('');
+      await dashboardsApi.setMain(id, isMain);
+      // Refresh the list to reflect the change
+      await fetchDashboards();
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const totalPages = Math.ceil(total / pageSize);
@@ -73,9 +84,22 @@ export default function DashboardList() {
               >
                 <div className="dashboard-card-header">
                   <h3 className="dashboard-card-name">{dashboard.name}</h3>
-                  <span className="dashboard-card-balance">
-                    {formatCurrency(dashboard.total_balance)}
-                  </span>
+                  <div className="dashboard-card-actions">
+                    <button
+                      className={`btn-icon-small star-button ${dashboard.is_main ? 'starred' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleMain(dashboard.id, !dashboard.is_main);
+                      }}
+                      aria-label={dashboard.is_main ? 'Unpin as main dashboard' : 'Pin as main dashboard'}
+                      title={dashboard.is_main ? 'Unpin as main dashboard' : 'Pin as main dashboard'}
+                    >
+                      <Star size={18} fill={dashboard.is_main ? 'currentColor' : 'none'} />
+                    </button>
+                    <span className="dashboard-card-balance">
+                      {formatCurrency(dashboard.total_balance)}
+                    </span>
+                  </div>
                 </div>
                 {dashboard.description && (
                   <p className="dashboard-card-description">{dashboard.description}</p>

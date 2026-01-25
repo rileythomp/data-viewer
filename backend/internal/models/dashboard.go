@@ -7,6 +7,7 @@ type Dashboard struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Position    int       `json:"position"`
+	IsMain      bool      `json:"is_main"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

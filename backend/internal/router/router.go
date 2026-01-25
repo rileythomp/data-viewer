@@ -91,9 +91,11 @@ func New(db *sql.DB) *mux.Router {
 	// Dashboard routes
 	api.HandleFunc("/dashboards", dashboardHandler.GetAll).Methods("GET")
 	api.HandleFunc("/dashboards", dashboardHandler.Create).Methods("POST")
+	api.HandleFunc("/dashboards/main", dashboardHandler.GetMain).Methods("GET")
 	api.HandleFunc("/dashboards/{id}", dashboardHandler.GetByID).Methods("GET")
 	api.HandleFunc("/dashboards/{id}", dashboardHandler.Update).Methods("PATCH")
 	api.HandleFunc("/dashboards/{id}", dashboardHandler.Delete).Methods("DELETE")
+	api.HandleFunc("/dashboards/{id}/main", dashboardHandler.SetMain).Methods("PATCH")
 
 	// Chart routes
 	api.HandleFunc("/charts", chartHandler.GetAll).Methods("GET")

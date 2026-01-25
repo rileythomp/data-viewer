@@ -449,6 +449,22 @@ export const dashboardsApi = {
     if (!res.ok) throw new Error('Failed to delete dashboard');
     return res.json();
   },
+
+  getMain: async () => {
+    const res = await fetch(`${API_BASE}/dashboards/main`);
+    if (!res.ok) throw new Error('Failed to fetch main dashboard');
+    return res.json();
+  },
+
+  setMain: async (id, isMain) => {
+    const res = await fetch(`${API_BASE}/dashboards/${id}/main`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_main: isMain }),
+    });
+    if (!res.ok) throw new Error('Failed to set main dashboard');
+    return res.json();
+  },
 };
 
 export const chartsApi = {

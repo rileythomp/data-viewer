@@ -144,3 +144,57 @@ func (h *DashboardHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
+
+func (h *DashboardHandler) SetMain(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid dashboard ID", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		IsMain bool `json:"is_main"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	err = h.repo.SetMain(id, req.IsMain)
+	if err != nil {
+		if err.Error() == "dashboard not found" {
+			http.Error(w, "Dashboard not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated dashboard
+	dashboard, err := h.repo.GetWithItems(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(dashboard)
+}
+
+func (h *DashboardHandler) GetMain(w http.ResponseWriter, r *http.Request) {
+	dashboard, err := h.repo.GetMain()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if dashboard == nil {
+		// Return null if no main dashboard is set
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("null"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(dashboard)
+}
