@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, History } from 'lucide-react';
 import { dashboardsApi } from '../services/api';
+import BalanceHistoryModal from './BalanceHistoryModal';
 
 export default function DashboardList() {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ export default function DashboardList() {
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [historyDashboard, setHistoryDashboard] = useState(null);
   const pageSize = 20;
 
   const fetchDashboards = async () => {
@@ -86,6 +88,17 @@ export default function DashboardList() {
                   <h3 className="dashboard-card-name">{dashboard.name}</h3>
                   <div className="dashboard-card-actions">
                     <button
+                      className="btn-icon-small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHistoryDashboard(dashboard);
+                      }}
+                      aria-label="View history"
+                      title="History"
+                    >
+                      <History size={16} />
+                    </button>
+                    <button
                       className={`btn-icon-small star-button ${dashboard.is_main ? 'starred' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -137,6 +150,15 @@ export default function DashboardList() {
             </div>
           )}
         </>
+      )}
+
+      {historyDashboard && (
+        <BalanceHistoryModal
+          entityType="dashboard"
+          entityId={historyDashboard.id}
+          entityName={historyDashboard.name}
+          onClose={() => setHistoryDashboard(null)}
+        />
       )}
     </div>
   );

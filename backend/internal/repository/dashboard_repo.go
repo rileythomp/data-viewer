@@ -613,6 +613,30 @@ func (r *DashboardRepository) GetMain() (*models.DashboardWithItems, error) {
 	return r.GetWithItems(d.ID)
 }
 
+func (r *DashboardRepository) GetHistory(dashboardID int) ([]models.DashboardBalanceHistory, error) {
+	query := `
+		SELECT id, dashboard_id, dashboard_name_snapshot, balance, recorded_at
+		FROM dashboard_balance_history
+		WHERE dashboard_id = $1
+		ORDER BY recorded_at DESC
+	`
+	rows, err := r.db.Query(query, dashboardID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query dashboard history: %w", err)
+	}
+	defer rows.Close()
+
+	var history []models.DashboardBalanceHistory
+	for rows.Next() {
+		var h models.DashboardBalanceHistory
+		if err := rows.Scan(&h.ID, &h.DashboardID, &h.DashboardNameSnapshot, &h.Balance, &h.RecordedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan dashboard history: %w", err)
+		}
+		history = append(history, h)
+	}
+	return history, nil
+}
+
 func (r *DashboardRepository) UpdateItemPositions(dashboardID int, positions []models.DashboardItemPosition) error {
 	tx, err := r.db.Begin()
 	if err != nil {

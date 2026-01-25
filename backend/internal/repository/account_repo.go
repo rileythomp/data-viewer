@@ -452,9 +452,35 @@ func (r *AccountRepository) UpdateBalance(id int, balance float64) (*models.Acco
 		return nil, fmt.Errorf("failed to find affected groups: %w", err)
 	}
 
+	// Build group balance map for dashboard history calculation
+	groupBalanceMap := make(map[int]float64)
 	if len(affectedGroupIDs) > 0 {
 		if err := r.insertGroupHistoryRecordsTx(tx, affectedGroupIDs, balanceMap); err != nil {
 			return nil, fmt.Errorf("failed to insert group history records: %w", err)
+		}
+		// Calculate group balances for dashboard history
+		groupBalanceMap, err = r.calculateGroupBalances(tx, affectedGroupIDs, balanceMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to calculate group balances: %w", err)
+		}
+	}
+
+	// Propagate history to affected dashboards
+	affectedDashboardIDs, err := r.findAffectedDashboards(tx, id, dependentIDs, affectedGroupIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find affected dashboards: %w", err)
+	}
+
+	if len(affectedDashboardIDs) > 0 {
+		// We need complete group balance map for all groups/institutions referenced by dashboards
+		// Expand groupBalanceMap to include any groups/institutions in dashboard formulas or items
+		groupBalanceMap, err = r.expandGroupBalanceMap(tx, groupBalanceMap, balanceMap, affectedDashboardIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to expand group balance map: %w", err)
+		}
+
+		if err := r.insertDashboardHistoryRecordsTx(tx, affectedDashboardIDs, balanceMap, groupBalanceMap); err != nil {
+			return nil, fmt.Errorf("failed to insert dashboard history records: %w", err)
 		}
 	}
 
@@ -980,4 +1006,347 @@ func (r *AccountRepository) insertGroupHistoryRecordsTx(tx *sql.Tx, groupIDs []i
 		}
 	}
 	return nil
+}
+
+// findAffectedDashboards returns all dashboard IDs affected by account/group balance changes
+func (r *AccountRepository) findAffectedDashboards(tx *sql.Tx, accountID int, dependentAccountIDs []int, affectedGroupIDs []int) ([]int, error) {
+	dashboardIDSet := make(map[int]bool)
+
+	// Collect all changed account IDs
+	changedAccountIDs := append([]int{accountID}, dependentAccountIDs...)
+
+	// Find dashboards containing any changed accounts
+	for _, accID := range changedAccountIDs {
+		rows, err := tx.Query(`
+			SELECT dashboard_id FROM dashboard_items WHERE item_type = 'account' AND item_id = $1
+		`, accID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var dashboardID int
+			if err := rows.Scan(&dashboardID); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			dashboardIDSet[dashboardID] = true
+		}
+		rows.Close()
+	}
+
+	// Find dashboards containing any affected groups
+	for _, groupID := range affectedGroupIDs {
+		rows, err := tx.Query(`
+			SELECT dashboard_id FROM dashboard_items WHERE item_type = 'group' AND item_id = $1
+		`, groupID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var dashboardID int
+			if err := rows.Scan(&dashboardID); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			dashboardIDSet[dashboardID] = true
+		}
+		rows.Close()
+	}
+
+	// Find dashboards containing institutions that have affected accounts
+	// (institutions are groups with entity_type='institution')
+	for _, accID := range changedAccountIDs {
+		rows, err := tx.Query(`
+			SELECT DISTINCT di.dashboard_id
+			FROM dashboard_items di
+			JOIN account_group_memberships agm ON di.item_type = 'institution' AND di.item_id = agm.group_id
+			JOIN account_groups ag ON agm.group_id = ag.id AND ag.entity_type = 'institution'
+			WHERE agm.account_id = $1
+		`, accID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var dashboardID int
+			if err := rows.Scan(&dashboardID); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			dashboardIDSet[dashboardID] = true
+		}
+		rows.Close()
+	}
+
+	// Find calculated dashboards whose formula references any changed accounts, groups, or institutions
+	rows, err := tx.Query(`
+		SELECT id, formula FROM dashboards
+		WHERE is_calculated = true AND formula IS NOT NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var dashboardID int
+		var formulaJSON []byte
+		if err := rows.Scan(&dashboardID, &formulaJSON); err != nil {
+			return nil, err
+		}
+
+		var formula []models.DashboardFormulaItem
+		if err := json.Unmarshal(formulaJSON, &formula); err != nil {
+			continue
+		}
+
+		for _, item := range formula {
+			if item.Type == "account" {
+				for _, accID := range changedAccountIDs {
+					if item.ID == accID {
+						dashboardIDSet[dashboardID] = true
+						break
+					}
+				}
+			} else if item.Type == "group" {
+				for _, groupID := range affectedGroupIDs {
+					if item.ID == groupID {
+						dashboardIDSet[dashboardID] = true
+						break
+					}
+				}
+			}
+			// Note: institutions in formulas are also tracked via affectedGroupIDs since they share the same table
+		}
+	}
+
+	// Convert set to slice
+	var dashboardIDs []int
+	for id := range dashboardIDSet {
+		dashboardIDs = append(dashboardIDs, id)
+	}
+	return dashboardIDs, nil
+}
+
+// insertDashboardHistoryRecordsTx inserts history records for multiple dashboards
+func (r *AccountRepository) insertDashboardHistoryRecordsTx(tx *sql.Tx, dashboardIDs []int, balanceMap map[int]float64, groupBalanceMap map[int]float64) error {
+	for _, dashboardID := range dashboardIDs {
+		// Get dashboard info
+		var dashboardName string
+		var isCalculated bool
+		var formulaJSON []byte
+
+		err := tx.QueryRow(`
+			SELECT name, is_calculated, formula
+			FROM dashboards WHERE id = $1
+		`, dashboardID).Scan(&dashboardName, &isCalculated, &formulaJSON)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+
+		var totalBalance float64
+		if isCalculated && len(formulaJSON) > 0 {
+			// Calculate from formula
+			var formula []models.DashboardFormulaItem
+			json.Unmarshal(formulaJSON, &formula)
+			for _, item := range formula {
+				switch item.Type {
+				case "account":
+					if balance, ok := balanceMap[item.ID]; ok {
+						totalBalance += item.Coefficient * balance
+					}
+				case "group", "institution":
+					if balance, ok := groupBalanceMap[item.ID]; ok {
+						totalBalance += item.Coefficient * balance
+					}
+				}
+			}
+		} else {
+			// Sum of dashboard item balances
+			itemRows, err := tx.Query(`
+				SELECT item_type, item_id FROM dashboard_items WHERE dashboard_id = $1
+			`, dashboardID)
+			if err != nil {
+				return err
+			}
+			for itemRows.Next() {
+				var itemType string
+				var itemID int
+				if err := itemRows.Scan(&itemType, &itemID); err != nil {
+					itemRows.Close()
+					return err
+				}
+				switch itemType {
+				case "account":
+					if balance, ok := balanceMap[itemID]; ok {
+						totalBalance += balance
+					}
+				case "group", "institution":
+					if balance, ok := groupBalanceMap[itemID]; ok {
+						totalBalance += balance
+					}
+				}
+			}
+			itemRows.Close()
+		}
+
+		// Insert history record
+		_, err = tx.Exec(`
+			INSERT INTO dashboard_balance_history (dashboard_id, dashboard_name_snapshot, balance)
+			VALUES ($1, $2, $3)
+		`, dashboardID, dashboardName, totalBalance)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// calculateGroupBalances calculates the balance for each group in groupIDs
+func (r *AccountRepository) calculateGroupBalances(tx *sql.Tx, groupIDs []int, balanceMap map[int]float64) (map[int]float64, error) {
+	groupBalanceMap := make(map[int]float64)
+
+	for _, groupID := range groupIDs {
+		var isCalculated bool
+		var formulaJSON []byte
+
+		err := tx.QueryRow(`
+			SELECT is_calculated, formula
+			FROM account_groups WHERE id = $1 AND is_archived = false
+		`, groupID).Scan(&isCalculated, &formulaJSON)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		var totalBalance float64
+		if isCalculated && len(formulaJSON) > 0 {
+			var formula []models.FormulaItem
+			json.Unmarshal(formulaJSON, &formula)
+			for _, item := range formula {
+				if balance, ok := balanceMap[item.AccountID]; ok {
+					totalBalance += item.Coefficient * balance
+				}
+			}
+		} else {
+			memberRows, err := tx.Query(`
+				SELECT account_id FROM account_group_memberships WHERE group_id = $1
+			`, groupID)
+			if err != nil {
+				return nil, err
+			}
+			for memberRows.Next() {
+				var accountID int
+				if err := memberRows.Scan(&accountID); err != nil {
+					memberRows.Close()
+					return nil, err
+				}
+				if balance, ok := balanceMap[accountID]; ok {
+					totalBalance += balance
+				}
+			}
+			memberRows.Close()
+		}
+
+		groupBalanceMap[groupID] = totalBalance
+	}
+
+	return groupBalanceMap, nil
+}
+
+// expandGroupBalanceMap adds balances for any groups/institutions referenced by dashboards that aren't already in the map
+func (r *AccountRepository) expandGroupBalanceMap(tx *sql.Tx, groupBalanceMap map[int]float64, balanceMap map[int]float64, dashboardIDs []int) (map[int]float64, error) {
+	// Collect all group/institution IDs referenced by these dashboards
+	groupIDSet := make(map[int]bool)
+
+	for _, dashboardID := range dashboardIDs {
+		// Get items
+		itemRows, err := tx.Query(`
+			SELECT item_type, item_id FROM dashboard_items WHERE dashboard_id = $1 AND item_type IN ('group', 'institution')
+		`, dashboardID)
+		if err != nil {
+			return nil, err
+		}
+		for itemRows.Next() {
+			var itemType string
+			var itemID int
+			if err := itemRows.Scan(&itemType, &itemID); err != nil {
+				itemRows.Close()
+				return nil, err
+			}
+			if _, ok := groupBalanceMap[itemID]; !ok {
+				groupIDSet[itemID] = true
+			}
+		}
+		itemRows.Close()
+
+		// Get formula items
+		var formulaJSON []byte
+		err = tx.QueryRow(`SELECT formula FROM dashboards WHERE id = $1 AND is_calculated = true`, dashboardID).Scan(&formulaJSON)
+		if err == nil && len(formulaJSON) > 0 {
+			var formula []models.DashboardFormulaItem
+			json.Unmarshal(formulaJSON, &formula)
+			for _, item := range formula {
+				if (item.Type == "group" || item.Type == "institution") {
+					if _, ok := groupBalanceMap[item.ID]; !ok {
+						groupIDSet[item.ID] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Calculate balances for missing groups/institutions
+	for groupID := range groupIDSet {
+		var isCalculated bool
+		var formulaJSON []byte
+
+		err := tx.QueryRow(`
+			SELECT is_calculated, formula
+			FROM account_groups WHERE id = $1 AND is_archived = false
+		`, groupID).Scan(&isCalculated, &formulaJSON)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		var totalBalance float64
+		if isCalculated && len(formulaJSON) > 0 {
+			var formula []models.FormulaItem
+			json.Unmarshal(formulaJSON, &formula)
+			for _, item := range formula {
+				if balance, ok := balanceMap[item.AccountID]; ok {
+					totalBalance += item.Coefficient * balance
+				}
+			}
+		} else {
+			memberRows, err := tx.Query(`
+				SELECT account_id FROM account_group_memberships WHERE group_id = $1
+			`, groupID)
+			if err != nil {
+				return nil, err
+			}
+			for memberRows.Next() {
+				var accountID int
+				if err := memberRows.Scan(&accountID); err != nil {
+					memberRows.Close()
+					return nil, err
+				}
+				if balance, ok := balanceMap[accountID]; ok {
+					totalBalance += balance
+				}
+			}
+			memberRows.Close()
+		}
+
+		groupBalanceMap[groupID] = totalBalance
+	}
+
+	return groupBalanceMap, nil
 }

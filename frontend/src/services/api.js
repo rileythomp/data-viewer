@@ -485,6 +485,12 @@ export const dashboardsApi = {
     if (!res.ok) throw new Error('Failed to update item positions');
     return res.json();
   },
+
+  getHistory: async (id) => {
+    const res = await fetch(`${API_BASE}/dashboards/${id}/history`);
+    if (!res.ok) throw new Error('Failed to fetch dashboard history');
+    return res.json();
+  },
 };
 
 export const chartsApi = {
