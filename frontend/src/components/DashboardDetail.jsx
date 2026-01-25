@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Check, ChevronDown, ChevronUp, Calculator } from 'lucide-react';
 import { dashboardsApi, accountsApi, groupsApi, institutionsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import BalanceHistoryModal from './BalanceHistoryModal';
 import InlineEditableText from './InlineEditableText';
 import MultiSelectDropdown from './MultiSelectDropdown';
+import DashboardFormulaDisplay from './DashboardFormulaDisplay';
 
 export default function DashboardDetail() {
   const { id } = useParams();
@@ -22,6 +23,8 @@ export default function DashboardDetail() {
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [selectedInstitutions, setSelectedInstitutions] = useState([]);
+  const [isCalculated, setIsCalculated] = useState(false);
+  const [formulaItems, setFormulaItems] = useState([]);
 
   const fetchDashboard = async () => {
     try {
@@ -42,6 +45,10 @@ export default function DashboardDetail() {
       setSelectedAccounts(accountIds);
       setSelectedGroups(groupIds);
       setSelectedInstitutions(institutionIds);
+
+      // Initialize formula state
+      setIsCalculated(data.is_calculated || false);
+      setFormulaItems(data.formula || []);
 
       // Expand all groups and institutions by default
       setExpandedGroups(new Set([...groupIds, ...institutionIds.map(id => `inst-${id}`)]));
@@ -81,30 +88,46 @@ export default function DashboardDetail() {
 
   const handleSaveName = async (name) => {
     if (!name.trim()) throw new Error('Dashboard name is required');
-    await dashboardsApi.update(id, name.trim(), dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions);
+    await dashboardsApi.update(id, name.trim(), dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
   const handleSaveDescription = async (description) => {
-    await dashboardsApi.update(id, dashboard.name, description || '', selectedAccounts, selectedGroups, selectedInstitutions);
+    await dashboardsApi.update(id, dashboard.name, description || '', selectedAccounts, selectedGroups, selectedInstitutions, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
   const handleAccountsChange = async (newSelection) => {
     setSelectedAccounts(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, newSelection, selectedGroups, selectedInstitutions);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, newSelection, selectedGroups, selectedInstitutions, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
   const handleGroupsChange = async (newSelection) => {
     setSelectedGroups(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, newSelection, selectedInstitutions);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, newSelection, selectedInstitutions, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
   const handleInstitutionsChange = async (newSelection) => {
     setSelectedInstitutions(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, newSelection);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, newSelection, isCalculated, isCalculated ? formulaItems : null);
+    await fetchDashboard();
+  };
+
+  const handleToggleCalculated = async (newIsCalculated) => {
+    setIsCalculated(newIsCalculated);
+    if (!newIsCalculated) {
+      // If turning off, save immediately with formula cleared
+      await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, false, null);
+      await fetchDashboard();
+    }
+  };
+
+  const handleFormulaChange = async (newFormulaItems) => {
+    setFormulaItems(newFormulaItems);
+    // Save immediately when formula changes
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, isCalculated, newFormulaItems);
     await fetchDashboard();
   };
 
@@ -192,7 +215,18 @@ export default function DashboardDetail() {
           ) : (
             <h1>{dashboard.name}</h1>
           )}
-          <p className="total-balance">Total: {formatCurrency(dashboard.total_balance)}</p>
+          {!isEditMode && dashboard.is_calculated && dashboard.formula && dashboard.formula.length > 0 ? (
+            <DashboardFormulaDisplay
+              formulaItems={dashboard.formula}
+              accounts={allAccounts}
+              groups={allGroups}
+              institutions={allInstitutions}
+              totalBalance={dashboard.total_balance}
+              editable={false}
+            />
+          ) : (
+            <p className="total-balance">Total: {formatCurrency(dashboard.total_balance)}</p>
+          )}
           {dashboard.description && !isEditMode && (
             <p className="dashboard-description">{dashboard.description}</p>
           )}
@@ -281,6 +315,40 @@ export default function DashboardDetail() {
               )}
             />
           </div>
+
+          <div className="form-group">
+            <div className="toggle-row">
+              <div className="toggle-label-content">
+                <Calculator size={18} className="toggle-icon" />
+                <span className="toggle-text">Custom Balance Formula</span>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={isCalculated}
+                  onChange={(e) => handleToggleCalculated(e.target.checked)}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            <p className="form-hint">
+              Use a custom formula instead of summing all item balances.
+            </p>
+          </div>
+
+          {isCalculated && (
+            <div className="form-group">
+              <label>Formula</label>
+              <DashboardFormulaDisplay
+                formulaItems={formulaItems}
+                accounts={allAccounts}
+                groups={allGroups}
+                institutions={allInstitutions}
+                editable={true}
+                onChange={handleFormulaChange}
+              />
+            </div>
+          )}
         </div>
       )}
 

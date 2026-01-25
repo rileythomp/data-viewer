@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Calculator } from 'lucide-react';
 import { dashboardsApi, accountsApi, groupsApi, institutionsApi } from '../services/api';
 import MultiSelectDropdown from './MultiSelectDropdown';
+import DashboardFormulaDisplay from './DashboardFormulaDisplay';
 
 export default function DashboardCreate() {
   const navigate = useNavigate();
@@ -17,6 +18,8 @@ export default function DashboardCreate() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [isCalculated, setIsCalculated] = useState(false);
+  const [formulaItems, setFormulaItems] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -70,7 +73,9 @@ export default function DashboardCreate() {
         description.trim(),
         selectedAccounts,
         selectedGroups,
-        selectedInstitutions
+        selectedInstitutions,
+        isCalculated,
+        isCalculated ? formulaItems : null
       );
       navigate(`/dashboards/${dashboard.id}`);
     } catch (err) {
@@ -192,6 +197,40 @@ export default function DashboardCreate() {
                     <span>{institution.name}</span>
                   </>
                 )}
+              />
+            </div>
+          )}
+
+          <div className="form-group">
+            <div className="toggle-row">
+              <div className="toggle-label-content">
+                <Calculator size={18} className="toggle-icon" />
+                <span className="toggle-text">Custom Balance Formula</span>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={isCalculated}
+                  onChange={(e) => setIsCalculated(e.target.checked)}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            <p className="form-hint">
+              Use a custom formula instead of summing all item balances.
+            </p>
+          </div>
+
+          {isCalculated && (
+            <div className="form-group">
+              <label>Formula</label>
+              <DashboardFormulaDisplay
+                formulaItems={formulaItems}
+                accounts={accounts}
+                groups={groups}
+                institutions={institutions}
+                editable={true}
+                onChange={setFormulaItems}
               />
             </div>
           )}

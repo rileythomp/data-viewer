@@ -410,33 +410,43 @@ export const dashboardsApi = {
     return res.json();
   },
 
-  create: async (name, description, accountIds = [], groupIds = [], institutionIds = []) => {
+  create: async (name, description, accountIds = [], groupIds = [], institutionIds = [], isCalculated = false, formula = null) => {
+    const payload = {
+      name,
+      description,
+      account_ids: accountIds,
+      group_ids: groupIds,
+      institution_ids: institutionIds,
+      is_calculated: isCalculated,
+    };
+    if (isCalculated && formula) {
+      payload.formula = formula;
+    }
     const res = await fetch(`${API_BASE}/dashboards`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        description,
-        account_ids: accountIds,
-        group_ids: groupIds,
-        institution_ids: institutionIds,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Failed to create dashboard');
     return res.json();
   },
 
-  update: async (id, name, description, accountIds = [], groupIds = [], institutionIds = []) => {
+  update: async (id, name, description, accountIds = [], groupIds = [], institutionIds = [], isCalculated = false, formula = null) => {
+    const payload = {
+      name,
+      description,
+      account_ids: accountIds,
+      group_ids: groupIds,
+      institution_ids: institutionIds,
+      is_calculated: isCalculated,
+    };
+    if (isCalculated && formula) {
+      payload.formula = formula;
+    }
     const res = await fetch(`${API_BASE}/dashboards/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        description,
-        account_ids: accountIds,
-        group_ids: groupIds,
-        institution_ids: institutionIds,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Failed to update dashboard');
     return res.json();
