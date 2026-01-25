@@ -62,3 +62,13 @@ type DashboardListResponse struct {
 	Page       int                  `json:"page"`
 	PageSize   int                  `json:"page_size"`
 }
+
+type DashboardItemPosition struct {
+	ItemType string `json:"item_type"` // "account", "group", or "institution"
+	ItemID   int    `json:"item_id"`
+	Position int    `json:"position"`
+}
+
+type UpdateDashboardItemPositionsRequest struct {
+	Positions []DashboardItemPosition `json:"positions"`
+}

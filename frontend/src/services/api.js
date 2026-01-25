@@ -475,6 +475,16 @@ export const dashboardsApi = {
     if (!res.ok) throw new Error('Failed to set main dashboard');
     return res.json();
   },
+
+  updateItemPositions: async (id, positions) => {
+    const res = await fetch(`${API_BASE}/dashboards/${id}/item-positions`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ positions }),
+    });
+    if (!res.ok) throw new Error('Failed to update item positions');
+    return res.json();
+  },
 };
 
 export const chartsApi = {

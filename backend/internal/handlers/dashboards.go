@@ -198,3 +198,38 @@ func (h *DashboardHandler) GetMain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dashboard)
 }
+
+func (h *DashboardHandler) UpdateItemPositions(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid dashboard ID", http.StatusBadRequest)
+		return
+	}
+
+	var req models.UpdateDashboardItemPositionsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	err = h.repo.UpdateItemPositions(id, req.Positions)
+	if err != nil {
+		if err.Error() == "dashboard not found" {
+			http.Error(w, "Dashboard not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated dashboard
+	dashboard, err := h.repo.GetWithItems(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(dashboard)
+}

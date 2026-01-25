@@ -612,3 +612,46 @@ func (r *DashboardRepository) GetMain() (*models.DashboardWithItems, error) {
 
 	return r.GetWithItems(d.ID)
 }
+
+func (r *DashboardRepository) UpdateItemPositions(dashboardID int, positions []models.DashboardItemPosition) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Verify dashboard exists
+	var exists bool
+	err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM dashboards WHERE id = $1)", dashboardID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to check dashboard existence: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("dashboard not found")
+	}
+
+	// Update each item's position
+	for _, pos := range positions {
+		result, err := tx.Exec(
+			"UPDATE dashboard_items SET position = $1 WHERE dashboard_id = $2 AND item_type = $3 AND item_id = $4",
+			pos.Position, dashboardID, pos.ItemType, pos.ItemID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update item position: %w", err)
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to get rows affected: %w", err)
+		}
+		if rowsAffected == 0 {
+			return fmt.Errorf("item not found: type=%s, id=%d", pos.ItemType, pos.ItemID)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}

@@ -119,7 +119,16 @@ export default function AccountList() {
                           >
                             {expandedDashboardGroups.has(item.group.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                           </button>
-                          <h3 className="group-name">{item.group.group_name}</h3>
+                          <h3
+                            className="group-name"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/groups/${item.group.id}`);
+                            }}
+                            title="View group details"
+                          >
+                            {item.group.group_name}
+                          </h3>
                           <span className="group-account-count">
                             ({item.group.accounts?.length || 0} accounts)
                           </span>
@@ -167,7 +176,16 @@ export default function AccountList() {
                           >
                             {expandedDashboardGroups.has(expandKey) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                           </button>
-                          <h3 className="group-name">{item.institution.name}</h3>
+                          <h3
+                            className="group-name"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/institutions/${item.institution.id}`);
+                            }}
+                            title="View institution details"
+                          >
+                            {item.institution.name}
+                          </h3>
                           <span className="group-account-count">
                             ({item.institution.accounts?.length || 0} accounts)
                           </span>
