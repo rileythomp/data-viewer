@@ -27,7 +27,7 @@ func (r *DashboardRepository) GetAll(page, pageSize int) (*models.DashboardListR
 	// Get paginated dashboards
 	offset := (page - 1) * pageSize
 	query := `
-		SELECT id, name, description, position, created_at, updated_at
+		SELECT id, name, description, position, is_main, is_calculated, formula, created_at, updated_at
 		FROM dashboards
 		ORDER BY position ASC, name ASC
 		LIMIT $1 OFFSET $2
@@ -41,8 +41,12 @@ func (r *DashboardRepository) GetAll(page, pageSize int) (*models.DashboardListR
 	var dashboards []models.DashboardWithItems
 	for rows.Next() {
 		var d models.Dashboard
-		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		var formulaJSON []byte
+		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.IsMain, &d.IsCalculated, &formulaJSON, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan dashboard: %w", err)
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &d.Formula)
 		}
 
 		// Get items for this dashboard
@@ -63,17 +67,21 @@ func (r *DashboardRepository) GetAll(page, pageSize int) (*models.DashboardListR
 
 func (r *DashboardRepository) GetByID(id int) (*models.Dashboard, error) {
 	query := `
-		SELECT id, name, description, position, created_at, updated_at
+		SELECT id, name, description, position, is_main, is_calculated, formula, created_at, updated_at
 		FROM dashboards
 		WHERE id = $1
 	`
 	var d models.Dashboard
-	err := r.db.QueryRow(query, id).Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt)
+	var formulaJSON []byte
+	err := r.db.QueryRow(query, id).Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.IsMain, &d.IsCalculated, &formulaJSON, &d.CreatedAt, &d.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dashboard: %w", err)
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &d.Formula)
 	}
 	return &d, nil
 }
@@ -129,6 +137,12 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 		return nil, fmt.Errorf("failed to get groups: %w", err)
 	}
 
+	// Get all institutions with their accounts
+	institutionsMap, err := r.getInstitutionsWithAccounts(accountMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get institutions: %w", err)
+	}
+
 	// Get dashboard items
 	itemsQuery := `
 		SELECT id, dashboard_id, item_type, item_id, position
@@ -167,6 +181,35 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 				})
 				totalBalance += group.TotalBalance
 			}
+		} else if di.ItemType == "institution" {
+			if institution, ok := institutionsMap[di.ItemID]; ok {
+				items = append(items, models.ListItem{
+					Type:        "institution",
+					Institution: institution,
+				})
+				totalBalance += institution.TotalBalance
+			}
+		}
+	}
+
+	// If dashboard has a custom formula, calculate total balance from formula instead
+	if dashboard.IsCalculated && len(dashboard.Formula) > 0 {
+		totalBalance = 0
+		for _, item := range dashboard.Formula {
+			switch item.Type {
+			case "account":
+				if acc, ok := accountMap[item.ID]; ok {
+					totalBalance += item.Coefficient * acc.CurrentBalance
+				}
+			case "group":
+				if group, ok := groupsMap[item.ID]; ok {
+					totalBalance += item.Coefficient * group.TotalBalance
+				}
+			case "institution":
+				if institution, ok := institutionsMap[item.ID]; ok {
+					totalBalance += item.Coefficient * institution.TotalBalance
+				}
+			}
 		}
 	}
 
@@ -178,11 +221,11 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 }
 
 func (r *DashboardRepository) getGroupsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.AccountGroupWithAccounts, error) {
-	// Get all non-archived groups
+	// Get all non-archived groups (excluding institutions)
 	groupsQuery := `
 		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
 		FROM account_groups
-		WHERE is_archived = false
+		WHERE is_archived = false AND entity_type = 'group'
 	`
 	groupRows, err := r.db.Query(groupsQuery)
 	if err != nil {
@@ -258,6 +301,89 @@ func (r *DashboardRepository) getGroupsWithAccounts(accountMap map[int]*models.A
 	return result, nil
 }
 
+func (r *DashboardRepository) getInstitutionsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.InstitutionWithAccounts, error) {
+	// Get all non-archived institutions
+	institutionsQuery := `
+		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		FROM account_groups
+		WHERE is_archived = false AND entity_type = 'institution'
+	`
+	institutionRows, err := r.db.Query(institutionsQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer institutionRows.Close()
+
+	var institutions []models.Institution
+	for institutionRows.Next() {
+		var i models.Institution
+		var formulaJSON []byte
+		err := institutionRows.Scan(&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.CreatedAt, &i.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if len(formulaJSON) > 0 {
+			json.Unmarshal(formulaJSON, &i.Formula)
+		}
+		institutions = append(institutions, i)
+	}
+
+	// Get all institution memberships
+	membershipQuery := `
+		SELECT agm.account_id, agm.group_id, agm.position_in_group
+		FROM account_group_memberships agm
+		JOIN account_groups ag ON agm.group_id = ag.id
+		WHERE ag.entity_type = 'institution'
+		ORDER BY agm.group_id, agm.position_in_group
+	`
+	membershipRows, err := r.db.Query(membershipQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer membershipRows.Close()
+
+	institutionAccounts := make(map[int][]models.AccountInGroup)
+	for membershipRows.Next() {
+		var accountID, institutionID, positionInGroup int
+		if err := membershipRows.Scan(&accountID, &institutionID, &positionInGroup); err != nil {
+			return nil, err
+		}
+		if acc, ok := accountMap[accountID]; ok {
+			institutionAccounts[institutionID] = append(institutionAccounts[institutionID], models.AccountInGroup{
+				Account:         *acc,
+				PositionInGroup: positionInGroup,
+			})
+		}
+	}
+
+	// Build institutions with accounts and calculate balances
+	result := make(map[int]*models.InstitutionWithAccounts)
+	for _, inst := range institutions {
+		accounts := institutionAccounts[inst.ID]
+
+		var totalBalance float64
+		if inst.IsCalculated && len(inst.Formula) > 0 {
+			for _, item := range inst.Formula {
+				if acc, ok := accountMap[item.AccountID]; ok {
+					totalBalance += item.Coefficient * acc.CurrentBalance
+				}
+			}
+		} else {
+			for _, a := range accounts {
+				totalBalance += a.CurrentBalance
+			}
+		}
+
+		result[inst.ID] = &models.InstitutionWithAccounts{
+			Institution:  inst,
+			TotalBalance: totalBalance,
+			Accounts:     accounts,
+		}
+	}
+
+	return result, nil
+}
+
 func (r *DashboardRepository) Create(req *models.CreateDashboardRequest) (*models.DashboardWithItems, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -277,14 +403,19 @@ func (r *DashboardRepository) Create(req *models.CreateDashboardRequest) (*model
 	}
 
 	// Insert dashboard
+	var formulaJSON []byte
+	if req.IsCalculated && len(req.Formula) > 0 {
+		formulaJSON, _ = json.Marshal(req.Formula)
+	}
+
 	query := `
-		INSERT INTO dashboards (name, description, position)
-		VALUES ($1, $2, $3)
-		RETURNING id, name, description, position, created_at, updated_at
+		INSERT INTO dashboards (name, description, position, is_calculated, formula)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, name, description, position, is_calculated, created_at, updated_at
 	`
 	var d models.Dashboard
-	err = tx.QueryRow(query, req.Name, req.Description, newPos).Scan(
-		&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt,
+	err = tx.QueryRow(query, req.Name, req.Description, newPos, req.IsCalculated, formulaJSON).Scan(
+		&d.ID, &d.Name, &d.Description, &d.Position, &d.IsCalculated, &d.CreatedAt, &d.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dashboard: %w", err)
@@ -312,6 +443,16 @@ func (r *DashboardRepository) Create(req *models.CreateDashboardRequest) (*model
 			return nil, fmt.Errorf("failed to add group to dashboard: %w", err)
 		}
 	}
+	for _, institutionID := range req.InstitutionIDs {
+		position++
+		_, err = tx.Exec(
+			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+			d.ID, "institution", institutionID, position,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add institution to dashboard: %w", err)
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
@@ -327,16 +468,22 @@ func (r *DashboardRepository) Update(id int, req *models.UpdateDashboardRequest)
 	}
 	defer tx.Rollback()
 
+	// Prepare formula JSON
+	var formulaJSON []byte
+	if req.IsCalculated && len(req.Formula) > 0 {
+		formulaJSON, _ = json.Marshal(req.Formula)
+	}
+
 	// Update dashboard metadata
 	query := `
 		UPDATE dashboards
-		SET name = $1, description = $2, updated_at = NOW()
-		WHERE id = $3
-		RETURNING id, name, description, position, created_at, updated_at
+		SET name = $1, description = $2, is_calculated = $3, formula = $4, updated_at = NOW()
+		WHERE id = $5
+		RETURNING id, name, description, position, is_calculated, created_at, updated_at
 	`
 	var d models.Dashboard
-	err = tx.QueryRow(query, req.Name, req.Description, id).Scan(
-		&d.ID, &d.Name, &d.Description, &d.Position, &d.CreatedAt, &d.UpdatedAt,
+	err = tx.QueryRow(query, req.Name, req.Description, req.IsCalculated, formulaJSON, id).Scan(
+		&d.ID, &d.Name, &d.Description, &d.Position, &d.IsCalculated, &d.CreatedAt, &d.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -373,6 +520,16 @@ func (r *DashboardRepository) Update(id int, req *models.UpdateDashboardRequest)
 			return nil, fmt.Errorf("failed to add group to dashboard: %w", err)
 		}
 	}
+	for _, institutionID := range req.InstitutionIDs {
+		position++
+		_, err = tx.Exec(
+			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
+			id, "institution", institutionID, position,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add institution to dashboard: %w", err)
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
@@ -393,6 +550,107 @@ func (r *DashboardRepository) Delete(id int) error {
 	}
 	if rowsAffected == 0 {
 		return fmt.Errorf("dashboard not found")
+	}
+
+	return nil
+}
+
+func (r *DashboardRepository) SetMain(id int, isMain bool) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if isMain {
+		// First, unset any existing main dashboard
+		_, err = tx.Exec("UPDATE dashboards SET is_main = FALSE WHERE is_main = TRUE")
+		if err != nil {
+			return fmt.Errorf("failed to unset existing main dashboard: %w", err)
+		}
+	}
+
+	// Set the new main dashboard status
+	result, err := tx.Exec("UPDATE dashboards SET is_main = $1, updated_at = NOW() WHERE id = $2", isMain, id)
+	if err != nil {
+		return fmt.Errorf("failed to set main dashboard: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("dashboard not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (r *DashboardRepository) GetMain() (*models.DashboardWithItems, error) {
+	query := `
+		SELECT id, name, description, position, is_main, is_calculated, formula, created_at, updated_at
+		FROM dashboards
+		WHERE is_main = TRUE
+	`
+	var d models.Dashboard
+	var formulaJSON []byte
+	err := r.db.QueryRow(query).Scan(&d.ID, &d.Name, &d.Description, &d.Position, &d.IsMain, &d.IsCalculated, &formulaJSON, &d.CreatedAt, &d.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get main dashboard: %w", err)
+	}
+	if len(formulaJSON) > 0 {
+		json.Unmarshal(formulaJSON, &d.Formula)
+	}
+
+	return r.GetWithItems(d.ID)
+}
+
+func (r *DashboardRepository) UpdateItemPositions(dashboardID int, positions []models.DashboardItemPosition) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Verify dashboard exists
+	var exists bool
+	err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM dashboards WHERE id = $1)", dashboardID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to check dashboard existence: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("dashboard not found")
+	}
+
+	// Update each item's position
+	for _, pos := range positions {
+		result, err := tx.Exec(
+			"UPDATE dashboard_items SET position = $1 WHERE dashboard_id = $2 AND item_type = $3 AND item_id = $4",
+			pos.Position, dashboardID, pos.ItemType, pos.ItemID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update item position: %w", err)
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to get rows affected: %w", err)
+		}
+		if rowsAffected == 0 {
+			return fmt.Errorf("item not found: type=%s, id=%d", pos.ItemType, pos.ItemID)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil

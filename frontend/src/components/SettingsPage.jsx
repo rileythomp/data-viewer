@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Archive, ArchiveRestore, Trash2, Plus } from 'lucide-react';
-import { accountsApi, groupsApi } from '../services/api';
+import { accountsApi, groupsApi, institutionsApi } from '../services/api';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import AccountForm from './AccountForm';
 import GroupForm from './GroupForm';
+import InstitutionForm from './InstitutionForm';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('accounts');
   const [accounts, setAccounts] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [institutions, setInstitutions] = useState([]);
   const [activeAccounts, setActiveAccounts] = useState([]); // Non-archived accounts for form dropdowns
   const [activeGroups, setActiveGroups] = useState([]); // Non-archived groups for form dropdowns
   const [loading, setLoading] = useState(true);
@@ -18,6 +20,7 @@ export default function SettingsPage() {
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, item: null, type: null });
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showGroupForm, setShowGroupForm] = useState(false);
+  const [showInstitutionForm, setShowInstitutionForm] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -26,14 +29,16 @@ export default function SettingsPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [accountsData, groupsData, activeAccountsData, activeGroupsData] = await Promise.all([
+      const [accountsData, groupsData, institutionsData, activeAccountsData, activeGroupsData] = await Promise.all([
         accountsApi.getAllIncludingArchived(),
         groupsApi.getAllIncludingArchived(),
+        institutionsApi.getAllIncludingArchived(),
         accountsApi.getAll(),
         groupsApi.getAll(),
       ]);
       setAccounts(accountsData);
       setGroups(groupsData);
+      setInstitutions(institutionsData);
       setActiveAccounts(activeAccountsData);
       setActiveGroups(activeGroupsData);
       setError(null);
@@ -48,8 +53,10 @@ export default function SettingsPage() {
     try {
       if (type === 'account') {
         await accountsApi.archive(id);
-      } else {
+      } else if (type === 'group') {
         await groupsApi.archive(id);
+      } else if (type === 'institution') {
+        await institutionsApi.archive(id);
       }
       fetchData();
     } catch (err) {
@@ -61,8 +68,10 @@ export default function SettingsPage() {
     try {
       if (type === 'account') {
         await accountsApi.unarchive(id);
-      } else {
+      } else if (type === 'group') {
         await groupsApi.unarchive(id);
+      } else if (type === 'institution') {
+        await institutionsApi.unarchive(id);
       }
       fetchData();
     } catch (err) {
@@ -75,8 +84,10 @@ export default function SettingsPage() {
     try {
       if (deleteModal.type === 'account') {
         await accountsApi.delete(deleteModal.item.id);
-      } else {
+      } else if (deleteModal.type === 'group') {
         await groupsApi.delete(deleteModal.item.id);
+      } else if (deleteModal.type === 'institution') {
+        await institutionsApi.delete(deleteModal.item.id);
       }
       setDeleteModal({ isOpen: false, item: null, type: null });
       fetchData();
@@ -88,8 +99,10 @@ export default function SettingsPage() {
   const handleItemClick = (item, type) => {
     if (type === 'account') {
       navigate(`/accounts/${item.id}`);
-    } else {
+    } else if (type === 'group') {
       navigate(`/groups/${item.id}`);
+    } else if (type === 'institution') {
+      navigate(`/institutions/${item.id}`);
     }
   };
 
@@ -129,11 +142,14 @@ export default function SettingsPage() {
     }
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
+  const handleCreateInstitution = async (name, description, color, isCalculated, formula) => {
+    try {
+      await institutionsApi.create(name, description, color, isCalculated, formula);
+      await fetchData();
+      setShowInstitutionForm(false);
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   if (loading) {
@@ -144,7 +160,10 @@ export default function SettingsPage() {
     );
   }
 
-  const currentItems = activeTab === 'accounts' ? accounts : groups;
+  const sortedAccounts = [...accounts].sort((a, b) => a.account_name.localeCompare(b.account_name));
+  const sortedGroups = [...groups].sort((a, b) => a.group_name.localeCompare(b.group_name));
+  const sortedInstitutions = [...institutions].sort((a, b) => a.name.localeCompare(b.name));
+  const currentItems = activeTab === 'accounts' ? sortedAccounts : activeTab === 'groups' ? sortedGroups : sortedInstitutions;
 
   return (
     <div className="app">
@@ -170,11 +189,21 @@ export default function SettingsPage() {
           Groups ({groups.length})
         </button>
         <button
+          className={`settings-tab ${activeTab === 'institutions' ? 'active' : ''}`}
+          onClick={() => setActiveTab('institutions')}
+        >
+          Institutions ({institutions.length})
+        </button>
+        <button
           className="btn-primary settings-create-btn"
-          onClick={() => activeTab === 'accounts' ? setShowAccountForm(true) : setShowGroupForm(true)}
+          onClick={() => {
+            if (activeTab === 'accounts') setShowAccountForm(true);
+            else if (activeTab === 'groups') setShowGroupForm(true);
+            else if (activeTab === 'institutions') setShowInstitutionForm(true);
+          }}
         >
           <Plus size={18} />
-          Create {activeTab === 'accounts' ? 'Account' : 'Group'}
+          Create {activeTab === 'accounts' ? 'Account' : activeTab === 'groups' ? 'Group' : 'Institution'}
         </button>
       </div>
 
@@ -196,6 +225,13 @@ export default function SettingsPage() {
         />
       )}
 
+      {showInstitutionForm && (
+        <InstitutionForm
+          onSubmit={handleCreateInstitution}
+          onCancel={() => setShowInstitutionForm(false)}
+        />
+      )}
+
       <div className="settings-list">
         {currentItems.length === 0 ? (
           <div className="empty-state">
@@ -203,7 +239,8 @@ export default function SettingsPage() {
           </div>
         ) : (
           currentItems.map((item) => {
-            const name = activeTab === 'accounts' ? item.account_name : item.group_name;
+            const name = activeTab === 'accounts' ? item.account_name : activeTab === 'groups' ? item.group_name : item.name;
+            const itemType = activeTab === 'accounts' ? 'account' : activeTab === 'groups' ? 'group' : 'institution';
             const isArchived = item.is_archived;
 
             return (
@@ -211,8 +248,8 @@ export default function SettingsPage() {
                 key={item.id}
                 className={`settings-list-item ${isArchived ? 'settings-list-item-archived' : ''}`}
               >
-                <div className="settings-list-item-content" onClick={() => handleItemClick(item, activeTab === 'accounts' ? 'account' : 'group')}>
-                  {activeTab === 'groups' && item.color && (
+                <div className="settings-list-item-content" onClick={() => handleItemClick(item, itemType)}>
+                  {(activeTab === 'groups' || activeTab === 'institutions') && item.color && (
                     <div
                       className="group-color-dot"
                       style={{ backgroundColor: item.color }}
@@ -220,11 +257,6 @@ export default function SettingsPage() {
                   )}
                   <span className="settings-list-item-name">{name}</span>
                   {isArchived && <span className="archived-badge">ARCHIVED</span>}
-                  {activeTab === 'accounts' && (
-                    <span className="settings-list-item-balance">
-                      {formatCurrency(item.current_balance)}
-                    </span>
-                  )}
                 </div>
                 <div className="settings-list-item-actions">
                   {isArchived ? (
@@ -232,7 +264,7 @@ export default function SettingsPage() {
                       className="btn-icon"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleUnarchive(item.id, activeTab === 'accounts' ? 'account' : 'group');
+                        handleUnarchive(item.id, itemType);
                       }}
                       title="Unarchive"
                     >
@@ -243,7 +275,7 @@ export default function SettingsPage() {
                       className="btn-icon"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleArchive(item.id, activeTab === 'accounts' ? 'account' : 'group');
+                        handleArchive(item.id, itemType);
                       }}
                       title="Archive"
                     >
@@ -254,7 +286,7 @@ export default function SettingsPage() {
                     className="btn-icon btn-icon-danger"
                     onClick={(e) => {
                       e.stopPropagation();
-                      openDeleteModal(item, activeTab === 'accounts' ? 'account' : 'group');
+                      openDeleteModal(item, itemType);
                     }}
                     title="Delete permanently"
                   >
@@ -269,7 +301,7 @@ export default function SettingsPage() {
 
       <DeleteConfirmModal
         isOpen={deleteModal.isOpen}
-        itemName={deleteModal.item ? (deleteModal.type === 'account' ? deleteModal.item.account_name : deleteModal.item.group_name) : ''}
+        itemName={deleteModal.item ? (deleteModal.type === 'account' ? deleteModal.item.account_name : deleteModal.type === 'group' ? deleteModal.item.group_name : deleteModal.item.name) : ''}
         itemType={deleteModal.type || 'item'}
         onConfirm={handleDelete}
         onCancel={closeDeleteModal}

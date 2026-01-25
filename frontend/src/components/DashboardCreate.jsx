@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
-import { dashboardsApi, accountsApi, groupsApi } from '../services/api';
+import { ArrowLeft, Calculator } from 'lucide-react';
+import { dashboardsApi, accountsApi, groupsApi, institutionsApi } from '../services/api';
 import MultiSelectDropdown from './MultiSelectDropdown';
+import DashboardFormulaDisplay from './DashboardFormulaDisplay';
 
 export default function DashboardCreate() {
   const navigate = useNavigate();
@@ -10,21 +11,27 @@ export default function DashboardCreate() {
   const [description, setDescription] = useState('');
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
+  const [selectedInstitutions, setSelectedInstitutions] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [institutions, setInstitutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [isCalculated, setIsCalculated] = useState(false);
+  const [formulaItems, setFormulaItems] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [accountsData, groupsData] = await Promise.all([
+        const [accountsData, groupsData, institutionsData] = await Promise.all([
           accountsApi.getAll(),
           groupsApi.getAll(),
+          institutionsApi.getAll(),
         ]);
         setAccounts(accountsData || []);
         setGroups(groupsData || []);
+        setInstitutions(institutionsData || []);
       } catch (err) {
         setError('Failed to load data');
       } finally {
@@ -65,7 +72,10 @@ export default function DashboardCreate() {
         name.trim(),
         description.trim(),
         selectedAccounts,
-        selectedGroups
+        selectedGroups,
+        selectedInstitutions,
+        isCalculated,
+        isCalculated ? formulaItems : null
       );
       navigate(`/dashboards/${dashboard.id}`);
     } catch (err) {
@@ -156,6 +166,71 @@ export default function DashboardCreate() {
                     <span>{group.group_name}</span>
                   </>
                 )}
+              />
+            </div>
+          )}
+
+          {institutions.length > 0 && (
+            <div className="form-group">
+              <label>Institutions</label>
+              <MultiSelectDropdown
+                items={institutions}
+                selectedIds={selectedInstitutions}
+                onChange={setSelectedInstitutions}
+                placeholder="Select institutions..."
+                labelKey="name"
+                renderOption={(institution) => (
+                  <>
+                    <div
+                      className="group-color-dot"
+                      style={{ backgroundColor: institution.color }}
+                    />
+                    <span>{institution.name}</span>
+                  </>
+                )}
+                renderChip={(institution) => (
+                  <>
+                    <div
+                      className="group-color-dot"
+                      style={{ backgroundColor: institution.color }}
+                    />
+                    <span>{institution.name}</span>
+                  </>
+                )}
+              />
+            </div>
+          )}
+
+          <div className="form-group">
+            <div className="toggle-row">
+              <div className="toggle-label-content">
+                <Calculator size={18} className="toggle-icon" />
+                <span className="toggle-text">Custom Balance Formula</span>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={isCalculated}
+                  onChange={(e) => setIsCalculated(e.target.checked)}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            <p className="form-hint">
+              Use a custom formula instead of summing all item balances.
+            </p>
+          </div>
+
+          {isCalculated && (
+            <div className="form-group">
+              <label>Formula</label>
+              <DashboardFormulaDisplay
+                formulaItems={formulaItems}
+                accounts={accounts}
+                groups={groups}
+                institutions={institutions}
+                editable={true}
+                onChange={setFormulaItems}
               />
             </div>
           )}
