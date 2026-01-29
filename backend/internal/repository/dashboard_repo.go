@@ -9,14 +9,12 @@ import (
 )
 
 type DashboardRepository struct {
-	db        *sql.DB
-	chartRepo *ChartRepository
+	db *sql.DB
 }
 
 func NewDashboardRepository(db *sql.DB) *DashboardRepository {
 	return &DashboardRepository{
-		db:        db,
-		chartRepo: NewChartRepository(db),
+		db: db,
 	}
 }
 
@@ -147,9 +145,6 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 		return nil, fmt.Errorf("failed to get institutions: %w", err)
 	}
 
-	// Charts map will be populated lazily as needed
-	chartsMap := make(map[int]*models.ChartWithItems)
-
 	// Get dashboard items
 	itemsQuery := `
 		SELECT id, dashboard_id, item_type, item_id, position
@@ -195,21 +190,6 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 					Institution: institution,
 				})
 				totalBalance += institution.TotalBalance
-			}
-		} else if di.ItemType == "chart" {
-			// Fetch chart if not already in map
-			if _, ok := chartsMap[di.ItemID]; !ok {
-				chart, err := r.chartRepo.GetWithItems(di.ItemID)
-				if err == nil && chart != nil {
-					chartsMap[di.ItemID] = chart
-				}
-			}
-			if chart, ok := chartsMap[di.ItemID]; ok {
-				items = append(items, models.ListItem{
-					Type:  "chart",
-					Chart: chart,
-				})
-				// Charts do NOT contribute to total balance
 			}
 		}
 	}
@@ -475,16 +455,6 @@ func (r *DashboardRepository) Create(req *models.CreateDashboardRequest) (*model
 			return nil, fmt.Errorf("failed to add institution to dashboard: %w", err)
 		}
 	}
-	for _, chartID := range req.ChartIDs {
-		position++
-		_, err = tx.Exec(
-			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
-			d.ID, "chart", chartID, position,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add chart to dashboard: %w", err)
-		}
-	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
@@ -560,16 +530,6 @@ func (r *DashboardRepository) Update(id int, req *models.UpdateDashboardRequest)
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to add institution to dashboard: %w", err)
-		}
-	}
-	for _, chartID := range req.ChartIDs {
-		position++
-		_, err = tx.Exec(
-			"INSERT INTO dashboard_items (dashboard_id, item_type, item_id, position) VALUES ($1, $2, $3, $4)",
-			id, "chart", chartID, position,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add chart to dashboard: %w", err)
 		}
 	}
 

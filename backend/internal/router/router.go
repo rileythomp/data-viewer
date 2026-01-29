@@ -27,14 +27,12 @@ func New(db *sql.DB) *mux.Router {
 	membershipRepo := repository.NewMembershipRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
 	dashboardRepo := repository.NewDashboardRepository(db)
-	chartRepo := repository.NewChartRepository(db)
 	datasetRepo := repository.NewDatasetRepository(db, datasetStorage, syncService)
 	accountHandler := handlers.NewAccountHandler(accountRepo, membershipRepo)
 	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
 	institutionHandler := handlers.NewInstitutionHandler(groupRepo)
 	settingsHandler := handlers.NewSettingsHandler(settingsRepo)
 	dashboardHandler := handlers.NewDashboardHandler(dashboardRepo)
-	chartHandler := handlers.NewChartHandler(chartRepo)
 	datasetHandler := handlers.NewDatasetHandler(datasetRepo)
 
 	// API routes
@@ -102,14 +100,6 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/dashboards/{id}/main", dashboardHandler.SetMain).Methods("PATCH")
 	api.HandleFunc("/dashboards/{id}/item-positions", dashboardHandler.UpdateItemPositions).Methods("PATCH")
 	api.HandleFunc("/dashboards/{id}/history", dashboardHandler.GetHistory).Methods("GET")
-
-	// Chart routes
-	api.HandleFunc("/charts", chartHandler.GetAll).Methods("GET")
-	api.HandleFunc("/charts", chartHandler.Create).Methods("POST")
-	api.HandleFunc("/charts/{id}", chartHandler.GetByID).Methods("GET")
-	api.HandleFunc("/charts/{id}", chartHandler.Update).Methods("PATCH")
-	api.HandleFunc("/charts/{id}", chartHandler.Delete).Methods("DELETE")
-	api.HandleFunc("/charts/{id}/history", chartHandler.GetHistory).Methods("GET")
 
 	// Dataset routes
 	api.HandleFunc("/datasets", datasetHandler.GetAll).Methods("GET")

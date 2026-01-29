@@ -410,14 +410,13 @@ export const dashboardsApi = {
     return res.json();
   },
 
-  create: async (name, description, accountIds = [], groupIds = [], institutionIds = [], chartIds = [], isCalculated = false, formula = null) => {
+  create: async (name, description, accountIds = [], groupIds = [], institutionIds = [], isCalculated = false, formula = null) => {
     const payload = {
       name,
       description,
       account_ids: accountIds,
       group_ids: groupIds,
       institution_ids: institutionIds,
-      chart_ids: chartIds,
       is_calculated: isCalculated,
     };
     if (isCalculated && formula) {
@@ -432,14 +431,13 @@ export const dashboardsApi = {
     return res.json();
   },
 
-  update: async (id, name, description, accountIds = [], groupIds = [], institutionIds = [], chartIds = [], isCalculated = false, formula = null) => {
+  update: async (id, name, description, accountIds = [], groupIds = [], institutionIds = [], isCalculated = false, formula = null) => {
     const payload = {
       name,
       description,
       account_ids: accountIds,
       group_ids: groupIds,
       institution_ids: institutionIds,
-      chart_ids: chartIds,
       is_calculated: isCalculated,
     };
     if (isCalculated && formula) {
@@ -491,84 +489,6 @@ export const dashboardsApi = {
   getHistory: async (id) => {
     const res = await fetch(`${API_BASE}/dashboards/${id}/history`);
     if (!res.ok) throw new Error('Failed to fetch dashboard history');
-    return res.json();
-  },
-};
-
-export const chartsApi = {
-  getAll: async (page = 1, pageSize = 20) => {
-    const res = await fetch(`${API_BASE}/charts?page=${page}&page_size=${pageSize}`);
-    if (!res.ok) throw new Error('Failed to fetch charts');
-    return res.json();
-  },
-
-  getById: async (id) => {
-    const res = await fetch(`${API_BASE}/charts/${id}`);
-    if (!res.ok) throw new Error('Failed to fetch chart');
-    return res.json();
-  },
-
-  getHistory: async (id) => {
-    const res = await fetch(`${API_BASE}/charts/${id}/history`);
-    if (!res.ok) throw new Error('Failed to fetch chart history');
-    return res.json();
-  },
-
-  create: async (name, description, accountIds = [], groupIds = [], datasetConfig = null, defaultChartType = null) => {
-    const payload = {
-      name,
-      description,
-    };
-
-    if (datasetConfig) {
-      payload.dataset_config = datasetConfig;
-    } else {
-      payload.account_ids = accountIds;
-      payload.group_ids = groupIds;
-      if (defaultChartType) {
-        payload.default_chart_type = defaultChartType;
-      }
-    }
-
-    const res = await fetch(`${API_BASE}/charts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error('Failed to create chart');
-    return res.json();
-  },
-
-  update: async (id, name, description, accountIds = [], groupIds = [], datasetConfig = null, defaultChartType = null) => {
-    const payload = {
-      name,
-      description,
-    };
-
-    if (datasetConfig) {
-      payload.dataset_config = datasetConfig;
-    } else {
-      payload.account_ids = accountIds;
-      payload.group_ids = groupIds;
-      if (defaultChartType) {
-        payload.default_chart_type = defaultChartType;
-      }
-    }
-
-    const res = await fetch(`${API_BASE}/charts/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error('Failed to update chart');
-    return res.json();
-  },
-
-  delete: async (id) => {
-    const res = await fetch(`${API_BASE}/charts/${id}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error('Failed to delete chart');
     return res.json();
   },
 };
