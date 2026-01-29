@@ -79,8 +79,8 @@ func (h *DatasetHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.SourceIDs) == 0 {
-		http.Error(w, "At least one source is required", http.StatusBadRequest)
+	if req.FolderPath == "" {
+		http.Error(w, "Folder path is required", http.StatusBadRequest)
 		return
 	}
 
@@ -156,7 +156,7 @@ func (h *DatasetHandler) GetData(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (h *DatasetHandler) AddSource(w http.ResponseWriter, r *http.Request) {
+func (h *DatasetHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
@@ -164,50 +164,7 @@ func (h *DatasetHandler) AddSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req models.AddSourceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.SourceType == "" {
-		req.SourceType = "upload" // default to upload for Phase 1
-	}
-
-	if err := h.repo.AddSource(id, req.SourceType, req.SourceID); err != nil {
-		if repository.IsValidationError(err) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// Return updated dataset
-	dataset, err := h.repo.GetByID(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(dataset)
-}
-
-func (h *DatasetHandler) RemoveSource(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid dataset ID", http.StatusBadRequest)
-		return
-	}
-	sourceID, err := strconv.Atoi(vars["sourceId"])
-	if err != nil {
-		http.Error(w, "Invalid source ID", http.StatusBadRequest)
-		return
-	}
-
-	if err := h.repo.RemoveSource(id, sourceID); err != nil {
+	if err := h.repo.SyncDataset(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -223,7 +180,7 @@ func (h *DatasetHandler) RemoveSource(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(dataset)
 }
 
-func (h *DatasetHandler) Rebuild(w http.ResponseWriter, r *http.Request) {
+func (h *DatasetHandler) GetSyncStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
@@ -231,39 +188,8 @@ func (h *DatasetHandler) Rebuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.BuildDataset(id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Return updated dataset
-	dataset, err := h.repo.GetByID(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	syncing := h.repo.IsSyncing(id)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(dataset)
-}
-
-// GetBySourceUploadID returns all datasets that contain the specified upload as a source
-func (h *DatasetHandler) GetBySourceUploadID(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	uploadID, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid upload ID", http.StatusBadRequest)
-		return
-	}
-
-	datasets, err := h.repo.GetBySourceUploadID(uploadID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"datasets": datasets,
-	})
+	json.NewEncoder(w).Encode(map[string]bool{"syncing": syncing})
 }

@@ -3,26 +3,18 @@ package models
 import "time"
 
 type Dataset struct {
-	ID           int             `json:"id"`
-	Name         string          `json:"name"`
-	Description  string          `json:"description"`
-	RowCount     int             `json:"row_count"`
-	Status       string          `json:"status"` // pending, building, ready, error
-	ErrorMessage string          `json:"error_message,omitempty"`
-	Sources      []DatasetSource `json:"sources,omitempty"`
-	Columns      []DatasetColumn `json:"columns,omitempty"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
-}
-
-type DatasetSource struct {
-	ID         int       `json:"id"`
-	DatasetID  int       `json:"dataset_id"`
-	SourceType string    `json:"source_type"` // upload, table, dataset
-	SourceID   int       `json:"source_id"`
-	SourceName string    `json:"source_name,omitempty"` // populated on read
-	Position   int       `json:"position"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID             int             `json:"id"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description"`
+	FolderPath     string          `json:"folder_path"`
+	RowCount       int             `json:"row_count"`
+	Status         string          `json:"status"` // pending, syncing, ready, error
+	ErrorMessage   string          `json:"error_message,omitempty"`
+	LastCommitHash string          `json:"last_commit_hash,omitempty"`
+	LastSyncedAt   *time.Time      `json:"last_synced_at,omitempty"`
+	Columns        []DatasetColumn `json:"columns,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
 type DatasetColumn struct {
@@ -37,12 +29,7 @@ type DatasetColumn struct {
 type CreateDatasetRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	SourceIDs   []int  `json:"source_ids"` // upload IDs for Phase 1
-}
-
-type AddSourceRequest struct {
-	SourceType string `json:"source_type"`
-	SourceID   int    `json:"source_id"`
+	FolderPath  string `json:"folder_path"`
 }
 
 type DatasetListResponse struct {
@@ -58,4 +45,5 @@ type DatasetDataResponse struct {
 	Total    int      `json:"total"`
 	Page     int      `json:"page"`
 	PageSize int      `json:"page_size"`
+	Syncing  bool     `json:"syncing"` // True if data is currently being synced
 }

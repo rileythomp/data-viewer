@@ -2,19 +2,25 @@ package repository
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"strings"
 
 	"finance-tracker/internal/models"
+	"finance-tracker/internal/service"
+	"finance-tracker/internal/storage"
 )
 
 type DatasetRepository struct {
-	db *sql.DB
+	db          *sql.DB
+	storage     storage.DatasetStorage
+	syncService *service.DatasetSyncService
 }
 
-func NewDatasetRepository(db *sql.DB) *DatasetRepository {
-	return &DatasetRepository{db: db}
+func NewDatasetRepository(db *sql.DB, storage storage.DatasetStorage, syncService *service.DatasetSyncService) *DatasetRepository {
+	return &DatasetRepository{
+		db:          db,
+		storage:     storage,
+		syncService: syncService,
+	}
 }
 
 func (r *DatasetRepository) GetAll(page, pageSize int) (*models.DatasetListResponse, error) {
@@ -28,7 +34,9 @@ func (r *DatasetRepository) GetAll(page, pageSize int) (*models.DatasetListRespo
 	// Get paginated datasets
 	offset := (page - 1) * pageSize
 	query := `
-		SELECT id, name, description, row_count, status, COALESCE(error_message, ''), created_at, updated_at
+		SELECT id, name, description, COALESCE(folder_path, ''), row_count, status,
+		       COALESCE(error_message, ''), COALESCE(last_commit_hash, ''), last_synced_at,
+		       created_at, updated_at
 		FROM datasets
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
@@ -42,8 +50,13 @@ func (r *DatasetRepository) GetAll(page, pageSize int) (*models.DatasetListRespo
 	var datasets []models.Dataset
 	for rows.Next() {
 		var d models.Dataset
-		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.RowCount, &d.Status, &d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		var lastSyncedAt sql.NullTime
+		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.FolderPath, &d.RowCount, &d.Status,
+			&d.ErrorMessage, &d.LastCommitHash, &lastSyncedAt, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan dataset: %w", err)
+		}
+		if lastSyncedAt.Valid {
+			d.LastSyncedAt = &lastSyncedAt.Time
 		}
 		datasets = append(datasets, d)
 	}
@@ -58,25 +71,25 @@ func (r *DatasetRepository) GetAll(page, pageSize int) (*models.DatasetListRespo
 
 func (r *DatasetRepository) GetByID(id int) (*models.Dataset, error) {
 	query := `
-		SELECT id, name, description, row_count, status, COALESCE(error_message, ''), created_at, updated_at
+		SELECT id, name, description, COALESCE(folder_path, ''), row_count, status,
+		       COALESCE(error_message, ''), COALESCE(last_commit_hash, ''), last_synced_at,
+		       created_at, updated_at
 		FROM datasets
 		WHERE id = $1
 	`
 	var d models.Dataset
-	err := r.db.QueryRow(query, id).Scan(&d.ID, &d.Name, &d.Description, &d.RowCount, &d.Status, &d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt)
+	var lastSyncedAt sql.NullTime
+	err := r.db.QueryRow(query, id).Scan(&d.ID, &d.Name, &d.Description, &d.FolderPath, &d.RowCount,
+		&d.Status, &d.ErrorMessage, &d.LastCommitHash, &lastSyncedAt, &d.CreatedAt, &d.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dataset: %w", err)
 	}
-
-	// Get sources with names
-	sources, err := r.getSources(id)
-	if err != nil {
-		return nil, err
+	if lastSyncedAt.Valid {
+		d.LastSyncedAt = &lastSyncedAt.Time
 	}
-	d.Sources = sources
 
 	// Get columns
 	columns, err := r.getColumns(id)
@@ -86,32 +99,6 @@ func (r *DatasetRepository) GetByID(id int) (*models.Dataset, error) {
 	d.Columns = columns
 
 	return &d, nil
-}
-
-func (r *DatasetRepository) getSources(datasetID int) ([]models.DatasetSource, error) {
-	query := `
-		SELECT ds.id, ds.dataset_id, ds.source_type, ds.source_id, ds.position, ds.created_at,
-		       COALESCE(u.name, '') as source_name
-		FROM dataset_sources ds
-		LEFT JOIN uploads u ON ds.source_type = 'upload' AND ds.source_id = u.id
-		WHERE ds.dataset_id = $1
-		ORDER BY ds.position
-	`
-	rows, err := r.db.Query(query, datasetID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query dataset sources: %w", err)
-	}
-	defer rows.Close()
-
-	var sources []models.DatasetSource
-	for rows.Next() {
-		var s models.DatasetSource
-		if err := rows.Scan(&s.ID, &s.DatasetID, &s.SourceType, &s.SourceID, &s.Position, &s.CreatedAt, &s.SourceName); err != nil {
-			return nil, fmt.Errorf("failed to scan dataset source: %w", err)
-		}
-		sources = append(sources, s)
-	}
-	return sources, nil
 }
 
 func (r *DatasetRepository) getColumns(datasetID int) ([]models.DatasetColumn, error) {
@@ -153,113 +140,19 @@ func IsValidationError(err error) bool {
 	return ok
 }
 
-// ValidateSourceCompatibility checks if all sources have compatible columns
-// Returns a user-friendly error message if sources are incompatible
-func (r *DatasetRepository) ValidateSourceCompatibility(sourceIDs []int) error {
-	if len(sourceIDs) == 0 {
-		return nil
-	}
-
-	type uploadInfo struct {
-		id      int
-		name    string
-		columns []string
-	}
-
-	// Fetch column info for all uploads
-	uploads := make([]uploadInfo, 0, len(sourceIDs))
-	for _, id := range sourceIDs {
-		var name string
-		var columnsJSON []byte
-		err := r.db.QueryRow("SELECT name, columns FROM uploads WHERE id = $1", id).Scan(&name, &columnsJSON)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return &ValidationError{Message: fmt.Sprintf("Upload with ID %d not found", id)}
-			}
-			return fmt.Errorf("failed to get upload info: %w", err)
-		}
-
-		var columns []string
-		if err := json.Unmarshal(columnsJSON, &columns); err != nil {
-			return fmt.Errorf("failed to parse columns for upload '%s': %w", name, err)
-		}
-
-		if len(columns) == 0 {
-			return &ValidationError{Message: fmt.Sprintf("Upload '%s' has no columns", name)}
-		}
-
-		uploads = append(uploads, uploadInfo{id: id, name: name, columns: columns})
-	}
-
-	// Compare all uploads against the first one
-	firstUpload := uploads[0]
-	for _, upload := range uploads[1:] {
-		if !columnsMatch(firstUpload.columns, upload.columns) {
-			return &ValidationError{
-				Message: fmt.Sprintf("'%s' has different columns than '%s'", upload.name, firstUpload.name),
-			}
-		}
-	}
-
-	return nil
-}
-
-// ValidateAddSourceCompatibility checks if a new source is compatible with existing dataset columns
-func (r *DatasetRepository) ValidateAddSourceCompatibility(datasetID int, sourceType string, sourceID int) error {
-	if sourceType != "upload" {
-		return nil // Only validate uploads for now
-	}
-
-	// Get existing dataset columns
-	dataset, err := r.GetByID(datasetID)
-	if err != nil {
-		return err
-	}
-	if dataset == nil {
-		return &ValidationError{Message: "Dataset not found"}
-	}
-
-	// If dataset has no columns yet (no sources), any source is compatible
-	if len(dataset.Columns) == 0 {
-		return nil
-	}
-
-	// Get the new upload's columns
-	var uploadName string
-	var columnsJSON []byte
-	err = r.db.QueryRow("SELECT name, columns FROM uploads WHERE id = $1", sourceID).Scan(&uploadName, &columnsJSON)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return &ValidationError{Message: fmt.Sprintf("Upload with ID %d not found", sourceID)}
-		}
-		return fmt.Errorf("failed to get upload info: %w", err)
-	}
-
-	var newColumns []string
-	if err := json.Unmarshal(columnsJSON, &newColumns); err != nil {
-		return fmt.Errorf("failed to parse columns: %w", err)
-	}
-
-	// Compare with existing dataset columns
-	existingColumns := make([]string, len(dataset.Columns))
-	for i, col := range dataset.Columns {
-		existingColumns[i] = col.Name
-	}
-
-	if !columnsMatch(existingColumns, newColumns) {
-		return &ValidationError{
-			Message: fmt.Sprintf("'%s' has different columns than the existing dataset", uploadName),
-		}
-	}
-
-	return nil
-}
-
 func (r *DatasetRepository) Create(req *models.CreateDatasetRequest) (*models.Dataset, error) {
-	// Validate source compatibility before creating dataset
-	if err := r.ValidateSourceCompatibility(req.SourceIDs); err != nil {
-		return nil, err
+	if req.FolderPath == "" {
+		return nil, &ValidationError{Message: "Folder path is required"}
 	}
+
+	// Initialize git repo and validate folder
+	commitHash, err := r.syncService.InitializeDataset(req.FolderPath)
+	if err != nil {
+		return nil, &ValidationError{Message: fmt.Sprintf("Failed to initialize folder: %v", err)}
+	}
+
+	// Generate table name from dataset name
+	tableName := storage.ToTableName(req.Name)
 
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -267,63 +160,92 @@ func (r *DatasetRepository) Create(req *models.CreateDatasetRequest) (*models.Da
 	}
 	defer tx.Rollback()
 
-	// Create dataset
+	// Check if table name is unique, append suffix if needed
+	tableName, err = r.ensureUniqueTableName(tx, tableName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate unique table name: %w", err)
+	}
+
+	// Create dataset with folder path and table name
 	query := `
-		INSERT INTO datasets (name, description, status)
-		VALUES ($1, $2, 'pending')
-		RETURNING id, name, description, row_count, status, COALESCE(error_message, ''), created_at, updated_at
+		INSERT INTO datasets (name, description, folder_path, last_commit_hash, table_name, status)
+		VALUES ($1, $2, $3, $4, $5, 'pending')
+		RETURNING id, name, description, COALESCE(folder_path, ''), row_count, status,
+		          COALESCE(error_message, ''), COALESCE(last_commit_hash, ''), last_synced_at,
+		          created_at, updated_at
 	`
 	var d models.Dataset
-	err = tx.QueryRow(query, req.Name, req.Description).Scan(
-		&d.ID, &d.Name, &d.Description, &d.RowCount, &d.Status, &d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt,
+	var lastSyncedAt sql.NullTime
+	err = tx.QueryRow(query, req.Name, req.Description, req.FolderPath, commitHash, tableName).Scan(
+		&d.ID, &d.Name, &d.Description, &d.FolderPath, &d.RowCount, &d.Status,
+		&d.ErrorMessage, &d.LastCommitHash, &lastSyncedAt, &d.CreatedAt, &d.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dataset: %w", err)
 	}
-
-	// Add sources
-	for i, sourceID := range req.SourceIDs {
-		_, err = tx.Exec(`
-			INSERT INTO dataset_sources (dataset_id, source_type, source_id, position)
-			VALUES ($1, 'upload', $2, $3)
-		`, d.ID, sourceID, i)
-		if err != nil {
-			return nil, fmt.Errorf("failed to add source: %w", err)
-		}
+	if lastSyncedAt.Valid {
+		d.LastSyncedAt = &lastSyncedAt.Time
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	// Build the dataset (populate data table)
-	if err := r.BuildDataset(d.ID); err != nil {
-		// Update status to error
-		r.db.Exec("UPDATE datasets SET status = 'error', error_message = $1 WHERE id = $2", err.Error(), d.ID)
+	// Perform initial sync to load data
+	datasetInfo := &service.DatasetInfo{
+		ID:         d.ID,
+		Name:       d.Name,
+		TableName:  tableName,
+		FolderPath: d.FolderPath,
+		Status:     d.Status,
+	}
+	_, _, err = r.syncService.SyncDataset(datasetInfo)
+	if err != nil {
+		// Error is already stored in the dataset by SyncDataset
+		// Return the dataset with error status
 	}
 
 	// Return the updated dataset
 	return r.GetByID(d.ID)
 }
 
+// ensureUniqueTableName checks if a table name is unique and appends a suffix if needed
+func (r *DatasetRepository) ensureUniqueTableName(tx *sql.Tx, baseName string) (string, error) {
+	tableName := baseName
+	suffix := 1
+
+	for {
+		var exists bool
+		err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM datasets WHERE table_name = $1)", tableName).Scan(&exists)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return tableName, nil
+		}
+		suffix++
+		tableName = fmt.Sprintf("%s_%d", baseName, suffix)
+	}
+}
+
 func (r *DatasetRepository) Delete(id int) error {
-	// Check if dataset exists
-	dataset, err := r.GetByID(id)
+	// Get dataset info including table name
+	info, err := r.GetDatasetInfo(id)
 	if err != nil {
 		return err
 	}
-	if dataset == nil {
+	if info == nil {
 		return fmt.Errorf("dataset not found")
 	}
 
-	// Drop the data table
-	tableName := fmt.Sprintf("datasets_data.dataset_%d", id)
-	_, err = r.db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
-	if err != nil {
-		return fmt.Errorf("failed to drop data table: %w", err)
+	// Delete data from storage using table name
+	if info.TableName != "" {
+		if err := r.storage.DeleteData(info.TableName); err != nil {
+			return fmt.Errorf("failed to delete data: %w", err)
+		}
 	}
 
-	// Delete the dataset (cascades to sources and columns)
+	// Delete the dataset (cascades to columns)
 	_, err = r.db.Exec("DELETE FROM datasets WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete dataset: %w", err)
@@ -332,347 +254,104 @@ func (r *DatasetRepository) Delete(id int) error {
 	return nil
 }
 
-func (r *DatasetRepository) AddSource(datasetID int, sourceType string, sourceID int) error {
-	// Validate source compatibility before adding
-	if err := r.ValidateAddSourceCompatibility(datasetID, sourceType, sourceID); err != nil {
-		return err
-	}
-
-	// Get next position
-	var maxPos int
-	r.db.QueryRow("SELECT COALESCE(MAX(position), -1) FROM dataset_sources WHERE dataset_id = $1", datasetID).Scan(&maxPos)
-
-	_, err := r.db.Exec(`
-		INSERT INTO dataset_sources (dataset_id, source_type, source_id, position)
-		VALUES ($1, $2, $3, $4)
-	`, datasetID, sourceType, sourceID, maxPos+1)
-	if err != nil {
-		return fmt.Errorf("failed to add source: %w", err)
-	}
-
-	// Rebuild dataset
-	return r.BuildDataset(datasetID)
-}
-
-func (r *DatasetRepository) RemoveSource(datasetID, sourceID int) error {
-	_, err := r.db.Exec("DELETE FROM dataset_sources WHERE dataset_id = $1 AND id = $2", datasetID, sourceID)
-	if err != nil {
-		return fmt.Errorf("failed to remove source: %w", err)
-	}
-
-	// Rebuild dataset
-	return r.BuildDataset(datasetID)
-}
-
-// DatasetWithSourceInfo includes the source junction table ID for removal operations
-type DatasetWithSourceInfo struct {
-	models.Dataset
-	SourceJunctionID int `json:"source_junction_id"`
-}
-
-// GetBySourceUploadID returns all datasets that contain the specified upload as a source
-func (r *DatasetRepository) GetBySourceUploadID(uploadID int) ([]DatasetWithSourceInfo, error) {
+// GetDatasetInfo returns the minimal dataset info needed for sync operations
+func (r *DatasetRepository) GetDatasetInfo(id int) (*service.DatasetInfo, error) {
 	query := `
-		SELECT d.id, d.name, d.description, d.row_count, d.status,
-		       COALESCE(d.error_message, ''), d.created_at, d.updated_at, ds.id as source_junction_id
-		FROM datasets d
-		INNER JOIN dataset_sources ds ON d.id = ds.dataset_id
-		WHERE ds.source_type = 'upload' AND ds.source_id = $1
-		ORDER BY d.name
+		SELECT id, name, COALESCE(table_name, ''), folder_path, last_commit_hash, status
+		FROM datasets
+		WHERE id = $1
 	`
-	rows, err := r.db.Query(query, uploadID)
+	var info service.DatasetInfo
+	var folderPath sql.NullString
+	err := r.db.QueryRow(query, id).Scan(&info.ID, &info.Name, &info.TableName, &folderPath, &info.LastCommitHash, &info.Status)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to query datasets by source: %w", err)
+		return nil, fmt.Errorf("failed to get dataset info: %w", err)
 	}
-	defer rows.Close()
+	if folderPath.Valid {
+		info.FolderPath = folderPath.String
+	}
 
-	var datasets []DatasetWithSourceInfo
-	for rows.Next() {
-		var d DatasetWithSourceInfo
-		if err := rows.Scan(&d.ID, &d.Name, &d.Description, &d.RowCount, &d.Status,
-			&d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt, &d.SourceJunctionID); err != nil {
-			return nil, fmt.Errorf("failed to scan dataset: %w", err)
-		}
-		datasets = append(datasets, d)
+	// If table_name is not set (legacy dataset), generate and save it
+	if info.TableName == "" {
+		info.TableName = storage.ToTableName(info.Name)
+		// Try to save it back to the database (best effort)
+		_, _ = r.db.Exec("UPDATE datasets SET table_name = $1 WHERE id = $2 AND table_name IS NULL", info.TableName, id)
 	}
-	return datasets, nil
+
+	return &info, nil
 }
 
-func (r *DatasetRepository) BuildDataset(id int) error {
-	// Set status to building
-	_, err := r.db.Exec("UPDATE datasets SET status = 'building', error_message = NULL, updated_at = NOW() WHERE id = $1", id)
+func (r *DatasetRepository) SyncDataset(id int) error {
+	info, err := r.GetDatasetInfo(id)
 	if err != nil {
-		return fmt.Errorf("failed to update status: %w", err)
-	}
-
-	// Get sources
-	sources, err := r.getSources(id)
-	if err != nil {
-		r.setError(id, err.Error())
 		return err
 	}
-
-	if len(sources) == 0 {
-		// No sources, mark as ready with 0 rows
-		_, err = r.db.Exec("UPDATE datasets SET status = 'ready', row_count = 0, updated_at = NOW() WHERE id = $1", id)
-		if err != nil {
-			return err
-		}
-		// Clear columns
-		r.db.Exec("DELETE FROM dataset_columns WHERE dataset_id = $1", id)
-		return nil
+	if info == nil {
+		return fmt.Errorf("dataset not found")
+	}
+	if info.FolderPath == "" {
+		return fmt.Errorf("dataset has no folder path configured")
 	}
 
-	// Get columns from first source
-	var firstColumns []string
-	if sources[0].SourceType == "upload" {
-		var columnsJSON []byte
-		err = r.db.QueryRow("SELECT columns FROM uploads WHERE id = $1", sources[0].SourceID).Scan(&columnsJSON)
-		if err != nil {
-			r.setError(id, "failed to get columns from source upload")
-			return fmt.Errorf("failed to get columns from source: %w", err)
-		}
-		json.Unmarshal(columnsJSON, &firstColumns)
-	}
-
-	if len(firstColumns) == 0 {
-		r.setError(id, "source has no columns")
-		return fmt.Errorf("source has no columns")
-	}
-
-	// Validate all sources have matching columns
-	for i, source := range sources[1:] {
-		if source.SourceType == "upload" {
-			var columnsJSON []byte
-			err = r.db.QueryRow("SELECT columns FROM uploads WHERE id = $1", source.SourceID).Scan(&columnsJSON)
-			if err != nil {
-				r.setError(id, fmt.Sprintf("failed to get columns from source %d", i+2))
-				return fmt.Errorf("failed to get columns from source %d: %w", i+2, err)
-			}
-			var cols []string
-			json.Unmarshal(columnsJSON, &cols)
-			if !columnsMatch(firstColumns, cols) {
-				r.setError(id, fmt.Sprintf("column mismatch with source %d: expected %v, got %v", i+2, firstColumns, cols))
-				return fmt.Errorf("column mismatch with source %d", i+2)
-			}
-		}
-	}
-
-	// Update dataset_columns
-	r.db.Exec("DELETE FROM dataset_columns WHERE dataset_id = $1", id)
-	for i, col := range firstColumns {
-		r.db.Exec(`
-			INSERT INTO dataset_columns (dataset_id, name, inferred_type, position)
-			VALUES ($1, $2, 'text', $3)
-		`, id, col, i)
-	}
-
-	// Create/recreate the data table
-	tableName := fmt.Sprintf("datasets_data.dataset_%d", id)
-	r.db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
-
-	// Build column definitions for create table
-	colDefs := make([]string, len(firstColumns))
-	for i, col := range firstColumns {
-		// Sanitize column name for SQL
-		safeName := sanitizeColumnName(col)
-		colDefs[i] = fmt.Sprintf("%s TEXT", safeName)
-	}
-	createSQL := fmt.Sprintf("CREATE TABLE %s (_row_id SERIAL PRIMARY KEY, %s)", tableName, strings.Join(colDefs, ", "))
-	_, err = r.db.Exec(createSQL)
-	if err != nil {
-		r.setError(id, "failed to create data table: "+err.Error())
-		return fmt.Errorf("failed to create data table: %w", err)
-	}
-
-	// Insert data from all sources
-	totalRows := 0
-	for _, source := range sources {
-		if source.SourceType == "upload" {
-			var sourceRows [][]any
-
-			// Read from upload_rows table
-			rows, err := r.db.Query("SELECT data FROM upload_rows WHERE upload_id = $1 ORDER BY row_index", source.SourceID)
-			if err != nil {
-				continue
-			}
-
-			for rows.Next() {
-				var rowJSON []byte
-				if err := rows.Scan(&rowJSON); err != nil {
-					continue
-				}
-
-				var row []any
-				if err := json.Unmarshal(rowJSON, &row); err != nil {
-					continue
-				}
-				sourceRows = append(sourceRows, row)
-			}
-			rows.Close()
-
-			// Insert all rows from this source
-			for _, row := range sourceRows {
-				// Build insert statement
-				safeColNames := make([]string, len(firstColumns))
-				placeholders := make([]string, len(firstColumns))
-				values := make([]any, len(firstColumns))
-				for i, col := range firstColumns {
-					safeColNames[i] = sanitizeColumnName(col)
-					placeholders[i] = fmt.Sprintf("$%d", i+1)
-					if i < len(row) {
-						values[i] = fmt.Sprintf("%v", row[i])
-					} else {
-						values[i] = ""
-					}
-				}
-				insertSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-					tableName,
-					strings.Join(safeColNames, ", "),
-					strings.Join(placeholders, ", "),
-				)
-				_, err = r.db.Exec(insertSQL, values...)
-				if err != nil {
-					continue
-				}
-				totalRows++
-			}
-		}
-	}
-
-	// Update dataset with row count and status
-	_, err = r.db.Exec("UPDATE datasets SET status = 'ready', row_count = $1, updated_at = NOW() WHERE id = $2", totalRows, id)
-	if err != nil {
-		return fmt.Errorf("failed to update dataset status: %w", err)
-	}
-
-	return nil
+	_, _, err = r.syncService.SyncDataset(info)
+	return err
 }
 
 func (r *DatasetRepository) GetData(id int, page, pageSize int, sortColumn, sortDirection string) (*models.DatasetDataResponse, error) {
-	// Get dataset to check it exists and is ready
-	dataset, err := r.GetByID(id)
+	// Get dataset info for sync check
+	info, err := r.GetDatasetInfo(id)
 	if err != nil {
 		return nil, err
 	}
-	if dataset == nil {
+	if info == nil {
 		return nil, nil
 	}
-	if dataset.Status != "ready" {
-		return nil, fmt.Errorf("dataset is not ready (status: %s)", dataset.Status)
-	}
 
-	tableName := fmt.Sprintf("datasets_data.dataset_%d", id)
+	// Check if currently syncing
+	isSyncing := r.syncService.IsSyncing(id)
 
-	// Get column names
-	columnNames := make([]string, len(dataset.Columns))
-	for i, col := range dataset.Columns {
-		columnNames[i] = col.Name
-	}
-
-	// Build query
-	safeColNames := make([]string, len(columnNames))
-	for i, col := range columnNames {
-		safeColNames[i] = sanitizeColumnName(col)
-	}
-	selectCols := strings.Join(safeColNames, ", ")
-
-	// Validate sort column
-	orderClause := "_row_id"
-	if sortColumn != "" {
-		safeSortCol := sanitizeColumnName(sortColumn)
-		// Verify column exists
-		for _, col := range safeColNames {
-			if col == safeSortCol {
-				orderClause = safeSortCol
-				if sortDirection == "desc" {
-					orderClause += " DESC"
-				} else {
-					orderClause += " ASC"
-				}
-				break
-			}
+	// If not syncing, check if sync is needed and trigger it
+	if !isSyncing && info.FolderPath != "" {
+		needsSync, err := r.syncService.NeedsSync(info)
+		if err == nil && needsSync {
+			// Start sync in background
+			go func() {
+				r.syncService.SyncDataset(info)
+			}()
+			isSyncing = true
 		}
 	}
 
-	offset := (page - 1) * pageSize
-	query := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s LIMIT $1 OFFSET $2", selectCols, tableName, orderClause)
-	rows, err := r.db.Query(query, pageSize, offset)
+	// Get current data from storage (may be stale if syncing)
+	dataPage, err := r.storage.GetData(id, info.TableName, page, pageSize, sortColumn, sortDirection)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query data: %w", err)
-	}
-	defer rows.Close()
-
-	var data [][]any
-	for rows.Next() {
-		values := make([]any, len(columnNames))
-		valuePtrs := make([]any, len(columnNames))
-		for i := range values {
-			valuePtrs[i] = &values[i]
+		// If no data exists yet, return empty response with syncing flag
+		if isSyncing {
+			return &models.DatasetDataResponse{
+				Columns:  []string{},
+				Rows:     [][]any{},
+				Total:    0,
+				Page:     page,
+				PageSize: pageSize,
+				Syncing:  true,
+			}, nil
 		}
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
-		}
-		// Convert sql.NullString and []byte to string
-		row := make([]any, len(values))
-		for i, v := range values {
-			switch val := v.(type) {
-			case []byte:
-				row[i] = string(val)
-			case nil:
-				row[i] = ""
-			default:
-				row[i] = val
-			}
-		}
-		data = append(data, row)
+		return nil, err
 	}
 
 	return &models.DatasetDataResponse{
-		Columns:  columnNames,
-		Rows:     data,
-		Total:    dataset.RowCount,
-		Page:     page,
-		PageSize: pageSize,
+		Columns:  dataPage.Columns,
+		Rows:     dataPage.Rows,
+		Total:    dataPage.Total,
+		Page:     dataPage.Page,
+		PageSize: dataPage.PageSize,
+		Syncing:  isSyncing,
 	}, nil
 }
 
-func (r *DatasetRepository) setError(id int, message string) {
-	r.db.Exec("UPDATE datasets SET status = 'error', error_message = $1, updated_at = NOW() WHERE id = $2", message, id)
-}
-
-func columnsMatch(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func sanitizeColumnName(name string) string {
-	// Replace spaces and special chars with underscores, lowercase
-	result := strings.ToLower(name)
-	result = strings.ReplaceAll(result, " ", "_")
-	result = strings.ReplaceAll(result, "-", "_")
-	result = strings.ReplaceAll(result, ".", "_")
-	// Remove any other non-alphanumeric chars except underscore
-	var sb strings.Builder
-	for _, c := range result {
-		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' {
-			sb.WriteRune(c)
-		}
-	}
-	result = sb.String()
-	if result == "" {
-		result = "column"
-	}
-	// Ensure it doesn't start with a number
-	if result[0] >= '0' && result[0] <= '9' {
-		result = "col_" + result
-	}
-	return result
+func (r *DatasetRepository) IsSyncing(id int) bool {
+	return r.syncService.IsSyncing(id)
 }

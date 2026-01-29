@@ -4,7 +4,6 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { accountsApi, dashboardsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import BalanceHistoryModal from './BalanceHistoryModal';
-import DashboardChartCard from './DashboardChartCard';
 
 export default function AccountList() {
   const navigate = useNavigate();
@@ -214,13 +213,6 @@ export default function AccountList() {
                         </div>
                       )}
                     </div>
-                  );
-                } else if (item.type === 'chart') {
-                  return (
-                    <DashboardChartCard
-                      key={`main-chart-${item.chart.id}`}
-                      chart={item.chart}
-                    />
                   );
                 }
                 return null;

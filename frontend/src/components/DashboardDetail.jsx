@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2, Check, ChevronDown, ChevronUp, Calculator, BarChart2 } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Check, ChevronDown, ChevronUp, Calculator } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
@@ -18,7 +18,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { dashboardsApi, accountsApi, groupsApi, institutionsApi, chartsApi } from '../services/api';
+import { dashboardsApi, accountsApi, groupsApi, institutionsApi } from '../services/api';
 import AccountCard from './AccountCard';
 import BalanceHistoryModal from './BalanceHistoryModal';
 import BalanceHistoryTable from './BalanceHistoryTable';
@@ -26,16 +26,13 @@ import BalanceHistoryChart from './BalanceHistoryChart';
 import InlineEditableText from './InlineEditableText';
 import MultiSelectDropdown from './MultiSelectDropdown';
 import DashboardFormulaDisplay from './DashboardFormulaDisplay';
-import DashboardChartCard from './DashboardChartCard';
 
 function SortableDashboardItem({ item, children }) {
   const itemId = item.type === 'account'
     ? `account-${item.account.id}`
     : item.type === 'group'
       ? `group-${item.group.id}`
-      : item.type === 'institution'
-        ? `institution-${item.institution.id}`
-        : `chart-${item.chart.id}`;
+      : `institution-${item.institution.id}`;
 
   const {
     attributes,
@@ -74,11 +71,9 @@ export default function DashboardDetail() {
   const [allAccounts, setAllAccounts] = useState([]);
   const [allGroups, setAllGroups] = useState([]);
   const [allInstitutions, setAllInstitutions] = useState([]);
-  const [allCharts, setAllCharts] = useState([]);
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [selectedInstitutions, setSelectedInstitutions] = useState([]);
-  const [selectedCharts, setSelectedCharts] = useState([]);
   const [isCalculated, setIsCalculated] = useState(false);
   const [formulaItems, setFormulaItems] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -110,13 +105,9 @@ export default function DashboardDetail() {
       const institutionIds = data.items
         ?.filter(item => item.type === 'institution')
         .map(item => item.institution.id) || [];
-      const chartIds = data.items
-        ?.filter(item => item.type === 'chart')
-        .map(item => item.chart.id) || [];
       setSelectedAccounts(accountIds);
       setSelectedGroups(groupIds);
       setSelectedInstitutions(institutionIds);
-      setSelectedCharts(chartIds);
 
       // Initialize formula state
       setIsCalculated(data.is_calculated || false);
@@ -133,16 +124,14 @@ export default function DashboardDetail() {
 
   const fetchSelectionData = async () => {
     try {
-      const [accountsData, groupsData, institutionsData, chartsData] = await Promise.all([
+      const [accountsData, groupsData, institutionsData] = await Promise.all([
         accountsApi.getAll(),
         groupsApi.getAll(),
         institutionsApi.getAll(),
-        chartsApi.getAll(1, 100),
       ]);
       setAllAccounts(accountsData || []);
       setAllGroups(groupsData || []);
       setAllInstitutions(institutionsData || []);
-      setAllCharts(chartsData?.charts || []);
     } catch (err) {
       // Silently fail - selection will just be empty
     }
@@ -172,36 +161,30 @@ export default function DashboardDetail() {
 
   const handleSaveName = async (name) => {
     if (!name.trim()) throw new Error('Dashboard name is required');
-    await dashboardsApi.update(id, name.trim(), dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, selectedCharts, isCalculated, isCalculated ? formulaItems : null);
+    await dashboardsApi.update(id, name.trim(), dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
   const handleSaveDescription = async (description) => {
-    await dashboardsApi.update(id, dashboard.name, description || '', selectedAccounts, selectedGroups, selectedInstitutions, selectedCharts, isCalculated, isCalculated ? formulaItems : null);
+    await dashboardsApi.update(id, dashboard.name, description || '', selectedAccounts, selectedGroups, selectedInstitutions, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
   const handleAccountsChange = async (newSelection) => {
     setSelectedAccounts(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, newSelection, selectedGroups, selectedInstitutions, selectedCharts, isCalculated, isCalculated ? formulaItems : null);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, newSelection, selectedGroups, selectedInstitutions, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
   const handleGroupsChange = async (newSelection) => {
     setSelectedGroups(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, newSelection, selectedInstitutions, selectedCharts, isCalculated, isCalculated ? formulaItems : null);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, newSelection, selectedInstitutions, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
   const handleInstitutionsChange = async (newSelection) => {
     setSelectedInstitutions(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, newSelection, selectedCharts, isCalculated, isCalculated ? formulaItems : null);
-    await fetchDashboard();
-  };
-
-  const handleChartsChange = async (newSelection) => {
-    setSelectedCharts(newSelection);
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, newSelection, isCalculated, isCalculated ? formulaItems : null);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, newSelection, isCalculated, isCalculated ? formulaItems : null);
     await fetchDashboard();
   };
 
@@ -209,7 +192,7 @@ export default function DashboardDetail() {
     setIsCalculated(newIsCalculated);
     if (!newIsCalculated) {
       // If turning off, save immediately with formula cleared
-      await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, selectedCharts, false, null);
+      await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, false, null);
       await fetchDashboard();
     }
   };
@@ -217,7 +200,7 @@ export default function DashboardDetail() {
   const handleFormulaChange = async (newFormulaItems) => {
     setFormulaItems(newFormulaItems);
     // Save immediately when formula changes
-    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, selectedCharts, isCalculated, newFormulaItems);
+    await dashboardsApi.update(id, dashboard.name, dashboard.description, selectedAccounts, selectedGroups, selectedInstitutions, isCalculated, newFormulaItems);
     await fetchDashboard();
   };
 
@@ -263,9 +246,7 @@ export default function DashboardDetail() {
         ? `account-${item.account.id}`
         : item.type === 'group'
           ? `group-${item.group.id}`
-          : item.type === 'institution'
-            ? `institution-${item.institution.id}`
-            : `chart-${item.chart.id}`;
+          : `institution-${item.institution.id}`;
       return itemId === active.id;
     });
     const newIndex = items.findIndex((item) => {
@@ -273,9 +254,7 @@ export default function DashboardDetail() {
         ? `account-${item.account.id}`
         : item.type === 'group'
           ? `group-${item.group.id}`
-          : item.type === 'institution'
-            ? `institution-${item.institution.id}`
-            : `chart-${item.chart.id}`;
+          : `institution-${item.institution.id}`;
       return itemId === over.id;
     });
 
@@ -295,9 +274,7 @@ export default function DashboardDetail() {
           ? item.account.id
           : item.type === 'group'
             ? item.group.id
-            : item.type === 'institution'
-              ? item.institution.id
-              : item.chart.id,
+            : item.institution.id,
         position: index + 1,
       }));
 
@@ -322,9 +299,7 @@ export default function DashboardDetail() {
         ? `account-${item.account.id}`
         : item.type === 'group'
           ? `group-${item.group.id}`
-          : item.type === 'institution'
-            ? `institution-${item.institution.id}`
-            : `chart-${item.chart.id}`;
+          : `institution-${item.institution.id}`;
       return itemId === activeId;
     });
   };
@@ -498,29 +473,6 @@ export default function DashboardDetail() {
           </div>
 
           <div className="form-group">
-            <label>Charts</label>
-            <MultiSelectDropdown
-              items={allCharts}
-              selectedIds={selectedCharts}
-              onChange={handleChartsChange}
-              placeholder="Select charts..."
-              labelKey="name"
-              renderOption={(chart) => (
-                <>
-                  <BarChart2 size={14} className="chart-select-icon" />
-                  <span>{chart.name}</span>
-                </>
-              )}
-              renderChip={(chart) => (
-                <>
-                  <BarChart2 size={14} className="chart-select-icon" />
-                  <span>{chart.name}</span>
-                </>
-              )}
-            />
-          </div>
-
-          <div className="form-group">
             <div className="toggle-row">
               <div className="toggle-label-content">
                 <Calculator size={18} className="toggle-icon" />
@@ -572,9 +524,7 @@ export default function DashboardDetail() {
                 ? `account-${item.account.id}`
                 : item.type === 'group'
                   ? `group-${item.group.id}`
-                  : item.type === 'institution'
-                    ? `institution-${item.institution.id}`
-                    : `chart-${item.chart.id}`
+                  : `institution-${item.institution.id}`
             )}
             strategy={verticalListSortingStrategy}
           >
@@ -709,12 +659,6 @@ export default function DashboardDetail() {
                       </div>
                     </SortableDashboardItem>
                   );
-                } else if (item.type === 'chart') {
-                  return (
-                    <SortableDashboardItem key={`chart-${item.chart.id}`} item={item}>
-                      <DashboardChartCard chart={item.chart} />
-                    </SortableDashboardItem>
-                  );
                 }
                 return null;
               })}
@@ -776,15 +720,6 @@ export default function DashboardDetail() {
                           <div className="group-header-right">
                             <span className="group-total">{formatCurrencyShort(activeItem.institution.total_balance)}</span>
                           </div>
-                        </div>
-                      </div>
-                    );
-                  } else if (activeItem.type === 'chart') {
-                    return (
-                      <div className="chart-card chart-card-dragging">
-                        <div className="chart-card-header">
-                          <BarChart2 size={18} className="chart-card-icon" />
-                          <h3 className="chart-card-name">{activeItem.chart.name}</h3>
                         </div>
                       </div>
                     );

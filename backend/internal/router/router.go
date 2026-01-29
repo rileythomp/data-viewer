@@ -7,6 +7,8 @@ import (
 
 	"finance-tracker/internal/handlers"
 	"finance-tracker/internal/repository"
+	"finance-tracker/internal/service"
+	"finance-tracker/internal/storage"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
@@ -15,22 +17,22 @@ import (
 func New(db *sql.DB) *mux.Router {
 	r := mux.NewRouter()
 
+	// Initialize storage and sync service
+	datasetStorage := storage.NewPostgresStorage(db)
+	syncService := service.NewDatasetSyncService(db, datasetStorage)
+
 	// Initialize repositories and handlers
 	accountRepo := repository.NewAccountRepository(db)
 	groupRepo := repository.NewAccountGroupRepository(db)
 	membershipRepo := repository.NewMembershipRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
 	dashboardRepo := repository.NewDashboardRepository(db)
-	chartRepo := repository.NewChartRepository(db)
-	uploadRepo := repository.NewUploadRepository(db)
-	datasetRepo := repository.NewDatasetRepository(db)
+	datasetRepo := repository.NewDatasetRepository(db, datasetStorage, syncService)
 	accountHandler := handlers.NewAccountHandler(accountRepo, membershipRepo)
 	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
 	institutionHandler := handlers.NewInstitutionHandler(groupRepo)
 	settingsHandler := handlers.NewSettingsHandler(settingsRepo)
 	dashboardHandler := handlers.NewDashboardHandler(dashboardRepo)
-	chartHandler := handlers.NewChartHandler(chartRepo)
-	uploadHandler := handlers.NewUploadHandler(uploadRepo)
 	datasetHandler := handlers.NewDatasetHandler(datasetRepo)
 
 	// API routes
@@ -99,31 +101,14 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/dashboards/{id}/item-positions", dashboardHandler.UpdateItemPositions).Methods("PATCH")
 	api.HandleFunc("/dashboards/{id}/history", dashboardHandler.GetHistory).Methods("GET")
 
-	// Chart routes
-	api.HandleFunc("/charts", chartHandler.GetAll).Methods("GET")
-	api.HandleFunc("/charts", chartHandler.Create).Methods("POST")
-	api.HandleFunc("/charts/{id}", chartHandler.GetByID).Methods("GET")
-	api.HandleFunc("/charts/{id}", chartHandler.Update).Methods("PATCH")
-	api.HandleFunc("/charts/{id}", chartHandler.Delete).Methods("DELETE")
-	api.HandleFunc("/charts/{id}/history", chartHandler.GetHistory).Methods("GET")
-
-	// Upload routes
-	api.HandleFunc("/uploads", uploadHandler.GetAll).Methods("GET")
-	api.HandleFunc("/uploads", uploadHandler.Create).Methods("POST")
-	api.HandleFunc("/uploads/{id}", uploadHandler.GetByID).Methods("GET")
-	api.HandleFunc("/uploads/{id}", uploadHandler.Delete).Methods("DELETE")
-	api.HandleFunc("/uploads/{id}/data", uploadHandler.GetData).Methods("GET")
-	api.HandleFunc("/uploads/{id}/datasets", datasetHandler.GetBySourceUploadID).Methods("GET")
-
 	// Dataset routes
 	api.HandleFunc("/datasets", datasetHandler.GetAll).Methods("GET")
 	api.HandleFunc("/datasets", datasetHandler.Create).Methods("POST")
 	api.HandleFunc("/datasets/{id}", datasetHandler.GetByID).Methods("GET")
 	api.HandleFunc("/datasets/{id}", datasetHandler.Delete).Methods("DELETE")
 	api.HandleFunc("/datasets/{id}/data", datasetHandler.GetData).Methods("GET")
-	api.HandleFunc("/datasets/{id}/sources", datasetHandler.AddSource).Methods("POST")
-	api.HandleFunc("/datasets/{id}/sources/{sourceId}", datasetHandler.RemoveSource).Methods("DELETE")
-	api.HandleFunc("/datasets/{id}/rebuild", datasetHandler.Rebuild).Methods("POST")
+	api.HandleFunc("/datasets/{id}/sync", datasetHandler.Sync).Methods("POST")
+	api.HandleFunc("/datasets/{id}/sync-status", datasetHandler.GetSyncStatus).Methods("GET")
 
 	return r
 }

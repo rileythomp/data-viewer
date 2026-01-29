@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calculator, BarChart2 } from 'lucide-react';
-import { dashboardsApi, accountsApi, groupsApi, institutionsApi, chartsApi } from '../services/api';
+import { ArrowLeft, Calculator } from 'lucide-react';
+import { dashboardsApi, accountsApi, groupsApi, institutionsApi } from '../services/api';
 import MultiSelectDropdown from './MultiSelectDropdown';
 import DashboardFormulaDisplay from './DashboardFormulaDisplay';
 
@@ -12,11 +12,9 @@ export default function DashboardCreate() {
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [selectedInstitutions, setSelectedInstitutions] = useState([]);
-  const [selectedCharts, setSelectedCharts] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [institutions, setInstitutions] = useState([]);
-  const [charts, setCharts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -26,16 +24,14 @@ export default function DashboardCreate() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [accountsData, groupsData, institutionsData, chartsData] = await Promise.all([
+        const [accountsData, groupsData, institutionsData] = await Promise.all([
           accountsApi.getAll(),
           groupsApi.getAll(),
           institutionsApi.getAll(),
-          chartsApi.getAll(1, 100),
         ]);
         setAccounts(accountsData || []);
         setGroups(groupsData || []);
         setInstitutions(institutionsData || []);
-        setCharts(chartsData?.charts || []);
       } catch (err) {
         setError('Failed to load data');
       } finally {
@@ -78,7 +74,6 @@ export default function DashboardCreate() {
         selectedAccounts,
         selectedGroups,
         selectedInstitutions,
-        selectedCharts,
         isCalculated,
         isCalculated ? formulaItems : null
       );
@@ -200,31 +195,6 @@ export default function DashboardCreate() {
                       style={{ backgroundColor: institution.color }}
                     />
                     <span>{institution.name}</span>
-                  </>
-                )}
-              />
-            </div>
-          )}
-
-          {charts.length > 0 && (
-            <div className="form-group">
-              <label>Charts</label>
-              <MultiSelectDropdown
-                items={charts}
-                selectedIds={selectedCharts}
-                onChange={setSelectedCharts}
-                placeholder="Select charts..."
-                labelKey="name"
-                renderOption={(chart) => (
-                  <>
-                    <BarChart2 size={14} className="chart-select-icon" />
-                    <span>{chart.name}</span>
-                  </>
-                )}
-                renderChip={(chart) => (
-                  <>
-                    <BarChart2 size={14} className="chart-select-icon" />
-                    <span>{chart.name}</span>
                   </>
                 )}
               />

@@ -43,8 +43,8 @@ export default function DatasetList() {
         switch (status) {
             case 'ready':
                 return <CheckCircle size={16} className="status-icon status-ready" />;
-            case 'building':
-                return <Loader size={16} className="status-icon status-building" />;
+            case 'syncing':
+                return <Loader size={16} className="status-icon status-building spinning" />;
             case 'error':
                 return <AlertCircle size={16} className="status-icon status-error" />;
             case 'pending':
@@ -82,7 +82,7 @@ export default function DatasetList() {
             {error && <div className="error">{error}</div>}
 
             {datasets.length === 0 ? (
-                <p className="empty-state">No datasets yet. Create your first dataset from uploaded data!</p>
+                <p className="empty-state">No datasets yet. Create your first dataset from a folder of CSV files!</p>
             ) : (
                 <>
                     <div className="dashboard-list">
