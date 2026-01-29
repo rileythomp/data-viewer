@@ -52,7 +52,7 @@
   font-size: 1rem;
   color: var(--color-success);
   font-weight: 600;
-  margin-top: var(--space-1);
+  margin-top: var(--space-3);
 }
 
 /* Buttons */
@@ -546,6 +546,7 @@
 .formula-section {
   background-color: var(--color-border-light);
   border-radius: var(--radius-md);
+  margin-top: var(--space-3);
   margin-bottom: var(--space-4);
 }
 
