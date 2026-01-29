@@ -573,73 +573,6 @@ export const chartsApi = {
   },
 };
 
-export const uploadsApi = {
-  getAll: async (page = 1, pageSize = 20) => {
-    const res = await fetch(`${API_BASE}/uploads?page=${page}&page_size=${pageSize}`);
-    if (!res.ok) throw new Error('Failed to fetch uploads');
-    return res.json();
-  },
-
-  getById: async (id) => {
-    const res = await fetch(`${API_BASE}/uploads/${id}`);
-    if (!res.ok) throw new Error('Failed to fetch upload');
-    return res.json();
-  },
-
-  getData: async (id, page = 1, pageSize = 50) => {
-    const res = await fetch(`${API_BASE}/uploads/${id}/data?page=${page}&page_size=${pageSize}`);
-    if (!res.ok) throw new Error('Failed to fetch upload data');
-    return res.json();
-  },
-
-  create: async (formData, onProgress) => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable && onProgress) {
-          const percentComplete = Math.round((e.loaded / e.total) * 100);
-          onProgress(percentComplete);
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status === 201 || xhr.status === 202) {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            resolve({ data, status: xhr.status });
-          } catch (e) {
-            reject(new Error('Invalid response from server'));
-          }
-        } else {
-          reject(new Error(xhr.responseText || 'Failed to create upload'));
-        }
-      });
-
-      xhr.addEventListener('error', () => {
-        reject(new Error('Network error occurred'));
-      });
-
-      xhr.open('POST', `${API_BASE}/uploads`);
-      xhr.send(formData);
-    });
-  },
-
-  delete: async (id) => {
-    const res = await fetch(`${API_BASE}/uploads/${id}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error('Failed to delete upload');
-    return res.json();
-  },
-
-  getDatasets: async (id) => {
-    const res = await fetch(`${API_BASE}/uploads/${id}/datasets`);
-    if (!res.ok) throw new Error('Failed to fetch datasets for upload');
-    return res.json();
-  },
-};
-
 export const datasetsApi = {
   getAll: async (page = 1, pageSize = 20) => {
     const res = await fetch(`${API_BASE}/datasets?page=${page}&page_size=${pageSize}`);
@@ -662,14 +595,14 @@ export const datasetsApi = {
     return res.json();
   },
 
-  create: async (name, description, sourceIds) => {
+  create: async (name, description, folderPath) => {
     const res = await fetch(`${API_BASE}/datasets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name,
         description,
-        source_ids: sourceIds,
+        folder_path: folderPath,
       }),
     });
     if (!res.ok) {
@@ -679,32 +612,17 @@ export const datasetsApi = {
     return res.json();
   },
 
-  addSource: async (id, sourceType, sourceId) => {
-    const res = await fetch(`${API_BASE}/datasets/${id}/sources`, {
+  sync: async (id) => {
+    const res = await fetch(`${API_BASE}/datasets/${id}/sync`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_type: sourceType,
-        source_id: sourceId,
-      }),
     });
-    if (!res.ok) throw new Error('Failed to add source');
+    if (!res.ok) throw new Error('Failed to sync dataset');
     return res.json();
   },
 
-  removeSource: async (id, sourceId) => {
-    const res = await fetch(`${API_BASE}/datasets/${id}/sources/${sourceId}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error('Failed to remove source');
-    return res.json();
-  },
-
-  rebuild: async (id) => {
-    const res = await fetch(`${API_BASE}/datasets/${id}/rebuild`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error('Failed to rebuild dataset');
+  getSyncStatus: async (id) => {
+    const res = await fetch(`${API_BASE}/datasets/${id}/sync-status`);
+    if (!res.ok) throw new Error('Failed to get sync status');
     return res.json();
   },
 

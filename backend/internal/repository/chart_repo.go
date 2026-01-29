@@ -26,6 +26,52 @@ func NewChartRepository(db *sql.DB) *ChartRepository {
 	return &ChartRepository{db: db}
 }
 
+// getDatasetTableName retrieves the fully qualified table name for a dataset
+func (r *ChartRepository) getDatasetTableName(datasetID int) (string, error) {
+	var tableName, datasetName string
+	err := r.db.QueryRow("SELECT COALESCE(table_name, ''), name FROM datasets WHERE id = $1", datasetID).Scan(&tableName, &datasetName)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("dataset not found")
+	}
+	if err != nil {
+		return "", err
+	}
+	// If table_name is not set (legacy dataset), generate it from the name
+	if tableName == "" {
+		tableName = sanitizeTableName(datasetName)
+	}
+	return fmt.Sprintf("dataset_data.%s", tableName), nil
+}
+
+// sanitizeTableName converts a dataset name to a valid PostgreSQL table name
+func sanitizeTableName(name string) string {
+	result := strings.ToLower(name)
+	result = strings.ReplaceAll(result, " ", "_")
+	result = strings.ReplaceAll(result, "-", "_")
+	result = strings.ReplaceAll(result, ".", "_")
+
+	var sb strings.Builder
+	for _, c := range result {
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' {
+			sb.WriteRune(c)
+		}
+	}
+	result = sb.String()
+
+	for strings.Contains(result, "__") {
+		result = strings.ReplaceAll(result, "__", "_")
+	}
+	result = strings.Trim(result, "_")
+
+	if result == "" {
+		result = "dataset"
+	}
+	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
+		result = "ds_" + result
+	}
+	return result
+}
+
 func (r *ChartRepository) GetAll(page, pageSize int) (*models.ChartListResponse, error) {
 	// Get total count
 	var total int
@@ -293,7 +339,11 @@ func (r *ChartRepository) getDatasetChartData(chart *models.Chart, cfg *models.C
 
 // computeDatasetPieData runs aggregation query for pie chart
 func (r *ChartRepository) computeDatasetPieData(cfg *models.ChartDatasetConfig) (*models.DatasetPieChartData, error) {
-	tableName := fmt.Sprintf("datasets_data.dataset_%d", cfg.DatasetID)
+	// Get the table name from the dataset
+	tableName, err := r.getDatasetTableName(cfg.DatasetID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dataset table name: %w", err)
+	}
 
 	// Sanitize column names
 	fieldCol := sanitizeColumnName(cfg.AggregationField)
@@ -417,7 +467,11 @@ func sortXValues(xValues []string) []int {
 
 // computeDatasetLineData retrieves data for line chart
 func (r *ChartRepository) computeDatasetLineData(cfg *models.ChartDatasetConfig) (*models.DatasetLineChartData, error) {
-	tableName := fmt.Sprintf("datasets_data.dataset_%d", cfg.DatasetID)
+	// Get the table name from the dataset
+	tableName, err := r.getDatasetTableName(cfg.DatasetID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dataset table name: %w", err)
+	}
 
 	xCol := sanitizeColumnName(cfg.XColumn)
 

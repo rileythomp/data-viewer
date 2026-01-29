@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, ChevronLeft, ChevronRight, Database, RefreshCw, Plus, X, ChevronUp, ChevronDown, FileSpreadsheet, FileJson } from 'lucide-react';
-import { datasetsApi, uploadsApi } from '../services/api';
+import { ArrowLeft, Trash2, ChevronLeft, ChevronRight, Database, RefreshCw, FolderOpen, ChevronUp, ChevronDown, Loader } from 'lucide-react';
+import { datasetsApi } from '../services/api';
 
 export default function DatasetDetail() {
     const { id } = useParams();
@@ -14,10 +14,8 @@ export default function DatasetDetail() {
     const [page, setPage] = useState(1);
     const [sortColumn, setSortColumn] = useState('');
     const [sortDirection, setSortDirection] = useState('asc');
-    const [rebuilding, setRebuilding] = useState(false);
-    const [showAddSource, setShowAddSource] = useState(false);
-    const [availableUploads, setAvailableUploads] = useState([]);
-    const [addingSource, setAddingSource] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+    const syncPollRef = useRef(null);
     const pageSize = 50;
 
     const fetchDataset = async () => {
@@ -33,12 +31,15 @@ export default function DatasetDetail() {
     };
 
     const fetchData = async () => {
-        if (!dataset || dataset.status !== 'ready') return;
-
         try {
             setDataLoading(true);
             const data = await datasetsApi.getData(id, page, pageSize, sortColumn, sortDirection);
             setDataResponse(data);
+
+            // Update syncing state from response
+            if (data.syncing !== undefined) {
+                setSyncing(data.syncing);
+            }
         } catch (err) {
             setError(err.message);
         } finally {
@@ -46,33 +47,41 @@ export default function DatasetDetail() {
         }
     };
 
-    const fetchAvailableUploads = async () => {
-        try {
-            const data = await uploadsApi.getAll(1, 100);
-            // Filter out uploads already in dataset
-            const sourceIds = dataset?.sources?.map(s => s.source_id) || [];
-            const available = (data.uploads || []).filter(u => !sourceIds.includes(u.id));
-            setAvailableUploads(available);
-        } catch {
-            // Silently ignore - not critical for the UI
+    // Poll for sync status when syncing
+    useEffect(() => {
+        if (syncing) {
+            syncPollRef.current = setInterval(async () => {
+                try {
+                    const data = await datasetsApi.getData(id, page, pageSize, sortColumn, sortDirection);
+                    setDataResponse(data);
+                    if (!data.syncing) {
+                        setSyncing(false);
+                        // Refresh dataset info to get updated row count, etc.
+                        const updated = await datasetsApi.getById(id);
+                        setDataset(updated);
+                    }
+                } catch {
+                    // Ignore poll errors
+                }
+            }, 2000);
         }
-    };
+
+        return () => {
+            if (syncPollRef.current) {
+                clearInterval(syncPollRef.current);
+            }
+        };
+    }, [syncing, id, page, pageSize, sortColumn, sortDirection]);
 
     useEffect(() => {
         fetchDataset();
     }, [id]);
 
     useEffect(() => {
-        if (dataset && dataset.status === 'ready') {
+        if (dataset) {
             fetchData();
         }
-    }, [dataset, page, sortColumn, sortDirection]);
-
-    useEffect(() => {
-        if (showAddSource) {
-            fetchAvailableUploads();
-        }
-    }, [showAddSource, dataset]);
+    }, [dataset?.id, page, sortColumn, sortDirection]);
 
     const handleDelete = async () => {
         if (window.confirm(`Are you sure you want to delete "${dataset.name}"? This will also delete all associated data.`)) {
@@ -85,44 +94,16 @@ export default function DatasetDetail() {
         }
     };
 
-    const handleRebuild = async () => {
+    const handleSync = async () => {
         try {
-            setRebuilding(true);
+            setSyncing(true);
             setError('');
-            await datasetsApi.rebuild(id);
-            await fetchDataset();
-            setPage(1);
+            await datasetsApi.sync(id);
+            // The sync endpoint returns immediately but sync continues in background
+            // Start polling
         } catch (err) {
             setError(err.message);
-        } finally {
-            setRebuilding(false);
-        }
-    };
-
-    const handleAddSource = async (uploadId) => {
-        try {
-            setAddingSource(true);
-            await datasetsApi.addSource(id, 'upload', uploadId);
-            await fetchDataset();
-            setShowAddSource(false);
-            setPage(1);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setAddingSource(false);
-        }
-    };
-
-    const handleRemoveSource = async (sourceId) => {
-        if (!window.confirm('Are you sure you want to remove this source? The dataset will be rebuilt.')) {
-            return;
-        }
-        try {
-            await datasetsApi.removeSource(id, sourceId);
-            await fetchDataset();
-            setPage(1);
-        } catch (err) {
-            setError(err.message);
+            setSyncing(false);
         }
     };
 
@@ -137,6 +118,7 @@ export default function DatasetDetail() {
     };
 
     const formatDate = (dateString) => {
+        if (!dateString) return 'Never';
         return new Date(dateString).toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'long',
@@ -195,12 +177,12 @@ export default function DatasetDetail() {
                         </button>
                         <div className="detail-actions">
                             <button
-                                onClick={handleRebuild}
+                                onClick={handleSync}
                                 className="btn-icon"
-                                title="Rebuild Dataset"
-                                disabled={rebuilding}
+                                title="Sync Dataset"
+                                disabled={syncing}
                             >
-                                <RefreshCw size={18} className={rebuilding ? 'spinning' : ''} />
+                                <RefreshCw size={18} className={syncing ? 'spinning' : ''} />
                             </button>
                             <button onClick={handleDelete} className="btn-icon btn-icon-danger" title="Delete">
                                 <Trash2 size={18} />
@@ -221,7 +203,7 @@ export default function DatasetDetail() {
                 <div className="upload-metadata-item">
                     <span className="upload-metadata-label">Status</span>
                     <span className={getStatusClass(dataset.status)}>
-                        {dataset.status.charAt(0).toUpperCase() + dataset.status.slice(1)}
+                        {syncing ? 'Syncing' : dataset.status.charAt(0).toUpperCase() + dataset.status.slice(1)}
                     </span>
                 </div>
                 <div className="upload-metadata-item">
@@ -233,17 +215,32 @@ export default function DatasetDetail() {
                     <span className="upload-metadata-value">{dataset.columns?.length || 0}</span>
                 </div>
                 <div className="upload-metadata-item">
-                    <span className="upload-metadata-label">Sources</span>
-                    <span className="upload-metadata-value">{dataset.sources?.length || 0}</span>
+                    <span className="upload-metadata-label">Last Synced</span>
+                    <span className="upload-metadata-value">{formatDate(dataset.last_synced_at)}</span>
                 </div>
                 <div className="upload-metadata-item">
                     <span className="upload-metadata-label">Created</span>
                     <span className="upload-metadata-value">{formatDate(dataset.created_at)}</span>
                 </div>
-                <div className="upload-metadata-item">
-                    <span className="upload-metadata-label">Updated</span>
-                    <span className="upload-metadata-value">{formatDate(dataset.updated_at)}</span>
+            </div>
+
+            {/* Folder Path Section */}
+            <div className="dataset-sources-section">
+                <div className="section-header">
+                    <h2>
+                        <FolderOpen size={18} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+                        Data Source
+                    </h2>
                 </div>
+                <div className="folder-path-display">
+                    <code>{dataset.folder_path || 'No folder configured'}</code>
+                </div>
+                {dataset.last_commit_hash && (
+                    <div className="commit-hash">
+                        <span className="upload-metadata-label">Last Commit:</span>
+                        <code>{dataset.last_commit_hash.substring(0, 8)}</code>
+                    </div>
+                )}
             </div>
 
             {dataset.error_message && (
@@ -252,172 +249,108 @@ export default function DatasetDetail() {
 
             {error && <div className="error">{error}</div>}
 
-            {/* Sources Section */}
-            <div className="dataset-sources-section">
-                <div className="section-header">
-                    <h2>Data Sources</h2>
-                    <button
-                        onClick={() => setShowAddSource(!showAddSource)}
-                        className="btn-secondary btn-small"
-                    >
-                        {showAddSource ? <X size={14} /> : <Plus size={14} />}
-                        {showAddSource ? 'Cancel' : 'Add Source'}
-                    </button>
+            {/* Data Table Section */}
+            <div className="upload-data-section">
+                <div className="upload-data-header">
+                    <h2>Data Preview</h2>
+                    {syncing && (
+                        <div className="sync-indicator">
+                            <Loader size={16} className="spinning" />
+                            <span>Syncing data...</span>
+                        </div>
+                    )}
                 </div>
 
-                {showAddSource && (
-                    <div className="add-source-panel">
-                        {availableUploads.length === 0 ? (
-                            <p className="empty-state-inline">No more uploads available to add.</p>
-                        ) : (
-                            <div className="available-sources-list">
-                                {availableUploads.map((upload) => (
-                                    <div
-                                        key={upload.id}
-                                        className="available-source-item"
-                                        onClick={() => !addingSource && handleAddSource(upload.id)}
-                                    >
-                                        <div className="source-item-icon">
-                                            {upload.file_type === 'csv' ? (
-                                                <FileSpreadsheet size={16} />
-                                            ) : (
-                                                <FileJson size={16} />
-                                            )}
-                                        </div>
-                                        <span className="source-item-name">{upload.name}</span>
-                                        <span className="source-item-meta">{upload.row_count} rows</span>
-                                        <Plus size={14} className="add-icon" />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                {dataLoading && !dataResponse ? (
+                    <div className="loading">Loading data...</div>
+                ) : dataResponse && dataResponse.rows && dataResponse.rows.length > 0 ? (
+                    <>
+                        <div className="upload-table-container">
+                            <table className="upload-table sortable-table">
+                                <thead>
+                                    <tr>
+                                        <th className="row-number-col">#</th>
+                                        {dataResponse.columns?.map((col, idx) => (
+                                            <th
+                                                key={idx}
+                                                onClick={() => handleSort(col)}
+                                                className="sortable-header"
+                                            >
+                                                <div className="header-content">
+                                                    {col}
+                                                    {sortColumn === col && (
+                                                        <span className="sort-indicator">
+                                                            {sortDirection === 'asc' ? (
+                                                                <ChevronUp size={14} />
+                                                            ) : (
+                                                                <ChevronDown size={14} />
+                                                            )}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {dataResponse.rows.map((row, rowIdx) => (
+                                        <tr key={rowIdx}>
+                                            <td className="row-number-col">
+                                                {(page - 1) * pageSize + rowIdx + 1}
+                                            </td>
+                                            {row.map((cell, cellIdx) => (
+                                                <td key={cellIdx}>{formatCellValue(cell)}</td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
 
-                {dataset.sources && dataset.sources.length > 0 ? (
-                    <div className="sources-list">
-                        {dataset.sources.map((source) => (
-                            <div key={source.id} className="source-list-item">
-                                <div
-                                    className="source-item-clickable"
-                                    onClick={() => navigate(`/uploads/${source.source_id}`)}
-                                >
-                                    <div className="source-item-icon">
-                                        <FileSpreadsheet size={16} />
-                                    </div>
-                                    <span className="source-item-name">
-                                        {source.source_name || `Upload #${source.source_id}`}
-                                    </span>
-                                    <span className="source-type-badge">{source.source_type}</span>
-                                </div>
+                        {totalPages > 1 && (
+                            <div className="pagination">
                                 <button
-                                    onClick={() => handleRemoveSource(source.id)}
-                                    className="btn-icon-small btn-icon-danger"
-                                    title="Remove source"
+                                    className="btn-secondary pagination-btn"
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={page === 1}
                                 >
-                                    <X size={14} />
+                                    <ChevronLeft size={16} />
+                                    Previous
+                                </button>
+                                <span className="pagination-info">
+                                    Page {page} of {totalPages} ({dataResponse.total.toLocaleString()} rows)
+                                </span>
+                                <button
+                                    className="btn-secondary pagination-btn"
+                                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={page === totalPages}
+                                >
+                                    Next
+                                    <ChevronRight size={16} />
                                 </button>
                             </div>
-                        ))}
+                        )}
+                    </>
+                ) : syncing ? (
+                    <div className="status-message">
+                        <Loader size={20} className="spinning" />
+                        <span>Loading data from folder...</span>
                     </div>
                 ) : (
-                    <p className="empty-state-inline">No sources configured.</p>
+                    <p className="empty-state-inline">No data available.</p>
                 )}
             </div>
 
-            {/* Data Table Section */}
-            {dataset.status === 'ready' && (
-                <div className="upload-data-section">
-                    <div className="upload-data-header">
-                        <h2>Data Preview</h2>
-                    </div>
-
-                    {dataLoading ? (
-                        <div className="loading">Loading data...</div>
-                    ) : dataResponse && dataResponse.rows && dataResponse.rows.length > 0 ? (
-                        <>
-                            <div className="upload-table-container">
-                                <table className="upload-table sortable-table">
-                                    <thead>
-                                        <tr>
-                                            <th className="row-number-col">#</th>
-                                            {dataResponse.columns?.map((col, idx) => (
-                                                <th
-                                                    key={idx}
-                                                    onClick={() => handleSort(col)}
-                                                    className="sortable-header"
-                                                >
-                                                    <div className="header-content">
-                                                        {col}
-                                                        {sortColumn === col && (
-                                                            <span className="sort-indicator">
-                                                                {sortDirection === 'asc' ? (
-                                                                    <ChevronUp size={14} />
-                                                                ) : (
-                                                                    <ChevronDown size={14} />
-                                                                )}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {dataResponse.rows.map((row, rowIdx) => (
-                                            <tr key={rowIdx}>
-                                                <td className="row-number-col">
-                                                    {(page - 1) * pageSize + rowIdx + 1}
-                                                </td>
-                                                {row.map((cell, cellIdx) => (
-                                                    <td key={cellIdx}>{formatCellValue(cell)}</td>
-                                                ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {totalPages > 1 && (
-                                <div className="pagination">
-                                    <button
-                                        className="btn-secondary pagination-btn"
-                                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                                        disabled={page === 1}
-                                    >
-                                        <ChevronLeft size={16} />
-                                        Previous
-                                    </button>
-                                    <span className="pagination-info">
-                                        Page {page} of {totalPages} ({dataResponse.total.toLocaleString()} rows)
-                                    </span>
-                                    <button
-                                        className="btn-secondary pagination-btn"
-                                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={page === totalPages}
-                                    >
-                                        Next
-                                        <ChevronRight size={16} />
-                                    </button>
-                                </div>
-                            )}
-                        </>
-                    ) : (
-                        <p className="empty-state-inline">No data available.</p>
-                    )}
-                </div>
-            )}
-
-            {dataset.status === 'building' && (
+            {dataset.status === 'syncing' && !syncing && (
                 <div className="status-message">
                     <RefreshCw size={20} className="spinning" />
-                    <span>Building dataset...</span>
+                    <span>Syncing dataset...</span>
                 </div>
             )}
 
             {dataset.status === 'pending' && (
                 <div className="status-message">
-                    <span>Dataset is pending. Add sources and rebuild to populate data.</span>
+                    <span>Dataset is pending initial sync.</span>
                 </div>
             )}
         </div>

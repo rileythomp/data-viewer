@@ -1,42 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, FileSpreadsheet, FileJson } from 'lucide-react';
-import { datasetsApi, uploadsApi } from '../services/api';
+import { ArrowLeft, FolderOpen } from 'lucide-react';
+import { datasetsApi } from '../services/api';
 
 export default function DatasetCreate() {
     const navigate = useNavigate();
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [selectedUploadIds, setSelectedUploadIds] = useState([]);
-    const [uploads, setUploads] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [folderPath, setFolderPath] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
-
-    useEffect(() => {
-        fetchUploads();
-    }, []);
-
-    const fetchUploads = async () => {
-        try {
-            // Fetch all uploads (up to 100 for now)
-            const data = await uploadsApi.getAll(1, 100);
-            setUploads(data.uploads || []);
-        } catch (err) {
-            setError('Failed to load uploads: ' + err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const toggleUpload = (uploadId) => {
-        setSelectedUploadIds(prev => {
-            if (prev.includes(uploadId)) {
-                return prev.filter(id => id !== uploadId);
-            }
-            return [...prev, uploadId];
-        });
-    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -46,31 +19,21 @@ export default function DatasetCreate() {
             return;
         }
 
-        if (selectedUploadIds.length === 0) {
-            setError('Please select at least one upload as a data source');
+        if (!folderPath.trim()) {
+            setError('Folder path is required');
             return;
         }
 
         try {
             setSubmitting(true);
             setError('');
-            const dataset = await datasetsApi.create(name.trim(), description.trim(), selectedUploadIds);
+            const dataset = await datasetsApi.create(name.trim(), description.trim(), folderPath.trim());
             navigate(`/datasets/${dataset.id}`);
         } catch (err) {
             setError(err.message);
             setSubmitting(false);
         }
     };
-
-    const formatFileSize = (bytes) => {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    };
-
-    if (loading) {
-        return <div className="loading">Loading uploads...</div>;
-    }
 
     return (
         <div className="app">
@@ -84,7 +47,7 @@ export default function DatasetCreate() {
                     </div>
                     <h1>Create Dataset</h1>
                     <p className="dashboard-description">
-                        A dataset combines data from one or more uploads into a single queryable table.
+                        A dataset reads CSV files from a folder on disk. All CSV files in the folder will be combined into a single dataset.
                     </p>
                 </div>
             </div>
@@ -117,53 +80,23 @@ export default function DatasetCreate() {
                 </div>
 
                 <div className="form-group">
-                    <label>Data Sources *</label>
+                    <label htmlFor="folderPath">
+                        <FolderOpen size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+                        Folder Path *
+                    </label>
+                    <input
+                        type="text"
+                        id="folderPath"
+                        value={folderPath}
+                        onChange={(e) => setFolderPath(e.target.value)}
+                        placeholder="/path/to/your/csv/folder"
+                        disabled={submitting}
+                    />
                     <p className="form-help-text">
-                        Select uploads to include in this dataset. All selected uploads must have matching column names.
+                        Enter the absolute path to a folder containing CSV files. All CSV files in the folder will be combined.
+                        Files must have matching column names. A git repository will be initialized to track changes.
                     </p>
-
-                    {uploads.length === 0 ? (
-                        <div className="empty-state-inline">
-                            <p>No uploads available. <a href="/uploads/new">Upload some data first</a>.</p>
-                        </div>
-                    ) : (
-                        <div className="source-selector">
-                            {uploads.map((upload) => {
-                                const isSelected = selectedUploadIds.includes(upload.id);
-                                return (
-                                    <div
-                                        key={upload.id}
-                                        className={`source-item ${isSelected ? 'selected' : ''}`}
-                                        onClick={() => toggleUpload(upload.id)}
-                                    >
-                                        <div className="source-item-checkbox">
-                                            {isSelected && <Check size={14} />}
-                                        </div>
-                                        <div className="source-item-icon">
-                                            {upload.file_type === 'csv' ? (
-                                                <FileSpreadsheet size={18} />
-                                            ) : (
-                                                <FileJson size={18} />
-                                            )}
-                                        </div>
-                                        <div className="source-item-info">
-                                            <span className="source-item-name">{upload.name}</span>
-                                            <span className="source-item-meta">
-                                                {upload.row_count.toLocaleString()} rows • {formatFileSize(upload.file_size)}
-                                            </span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
                 </div>
-
-                {selectedUploadIds.length > 0 && (
-                    <div className="selection-summary">
-                        {selectedUploadIds.length} upload{selectedUploadIds.length !== 1 ? 's' : ''} selected
-                    </div>
-                )}
 
                 <div className="form-actions">
                     <button
@@ -177,7 +110,7 @@ export default function DatasetCreate() {
                     <button
                         type="submit"
                         className="btn-primary"
-                        disabled={submitting || selectedUploadIds.length === 0}
+                        disabled={submitting || !folderPath.trim()}
                     >
                         {submitting ? 'Creating...' : 'Create Dataset'}
                     </button>
