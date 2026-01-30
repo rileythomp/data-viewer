@@ -21,5 +21,5 @@ ALTER TABLE dashboard_items DROP COLUMN IF EXISTS grid_y;
 ALTER TABLE dashboard_items DROP COLUMN IF EXISTS grid_h;
 ALTER TABLE dashboard_items DROP COLUMN IF EXISTS grid_w;
 
--- Remove unused total_formula setting (feature was never completed)
-DELETE FROM app_settings WHERE key = 'total_formula';
+-- Drop app_settings table (only used for total_formula feature which was never completed)
+DROP TABLE IF EXISTS app_settings CASCADE;
