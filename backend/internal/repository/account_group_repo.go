@@ -9,14 +9,12 @@ import (
 )
 
 type AccountGroupRepository struct {
-	db           *sql.DB
-	settingsRepo *SettingsRepository
+	db *sql.DB
 }
 
 func NewAccountGroupRepository(db *sql.DB) *AccountGroupRepository {
 	return &AccountGroupRepository{
-		db:           db,
-		settingsRepo: NewSettingsRepository(db),
+		db: db,
 	}
 }
 

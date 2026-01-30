@@ -91,38 +91,7 @@ func (r *DatasetRepository) GetByID(id int) (*models.Dataset, error) {
 		d.LastSyncedAt = &lastSyncedAt.Time
 	}
 
-	// Get columns
-	columns, err := r.getColumns(id)
-	if err != nil {
-		return nil, err
-	}
-	d.Columns = columns
-
 	return &d, nil
-}
-
-func (r *DatasetRepository) getColumns(datasetID int) ([]models.DatasetColumn, error) {
-	query := `
-		SELECT id, dataset_id, name, inferred_type, COALESCE(override_type, ''), position
-		FROM dataset_columns
-		WHERE dataset_id = $1
-		ORDER BY position
-	`
-	rows, err := r.db.Query(query, datasetID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query dataset columns: %w", err)
-	}
-	defer rows.Close()
-
-	var columns []models.DatasetColumn
-	for rows.Next() {
-		var c models.DatasetColumn
-		if err := rows.Scan(&c.ID, &c.DatasetID, &c.Name, &c.InferredType, &c.OverrideType, &c.Position); err != nil {
-			return nil, fmt.Errorf("failed to scan dataset column: %w", err)
-		}
-		columns = append(columns, c)
-	}
-	return columns, nil
 }
 
 // ValidationError represents a user-facing validation error
