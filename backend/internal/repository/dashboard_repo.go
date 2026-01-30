@@ -617,9 +617,9 @@ func (r *DashboardRepository) GetMain() (*models.DashboardWithItems, error) {
 
 func (r *DashboardRepository) GetHistory(dashboardID int) ([]models.DashboardBalanceHistory, error) {
 	query := `
-		SELECT id, dashboard_id, dashboard_name_snapshot, balance, recorded_at
-		FROM dashboard_balance_history
-		WHERE dashboard_id = $1
+		SELECT id, entity_type, entity_id, entity_name_snapshot, balance, recorded_at
+		FROM entity_balance_history
+		WHERE entity_type = 'dashboard' AND entity_id = $1
 		ORDER BY recorded_at DESC
 	`
 	rows, err := r.db.Query(query, dashboardID)
@@ -631,7 +631,7 @@ func (r *DashboardRepository) GetHistory(dashboardID int) ([]models.DashboardBal
 	var history []models.DashboardBalanceHistory
 	for rows.Next() {
 		var h models.DashboardBalanceHistory
-		if err := rows.Scan(&h.ID, &h.DashboardID, &h.DashboardNameSnapshot, &h.Balance, &h.RecordedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.EntityType, &h.EntityID, &h.EntityNameSnapshot, &h.Balance, &h.RecordedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan dashboard history: %w", err)
 		}
 		history = append(history, h)

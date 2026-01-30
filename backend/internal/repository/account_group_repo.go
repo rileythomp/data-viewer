@@ -389,9 +389,9 @@ func (r *AccountGroupRepository) Delete(id int) error {
 
 func (r *AccountGroupRepository) GetHistory(groupID int) ([]models.GroupBalanceHistory, error) {
 	query := `
-		SELECT id, group_id, group_name_snapshot, balance, recorded_at
-		FROM group_balance_history
-		WHERE group_id = $1
+		SELECT id, entity_type, entity_id, entity_name_snapshot, balance, recorded_at
+		FROM entity_balance_history
+		WHERE entity_type = 'group' AND entity_id = $1
 		ORDER BY recorded_at DESC
 	`
 	rows, err := r.db.Query(query, groupID)
@@ -403,7 +403,7 @@ func (r *AccountGroupRepository) GetHistory(groupID int) ([]models.GroupBalanceH
 	var history []models.GroupBalanceHistory
 	for rows.Next() {
 		var h models.GroupBalanceHistory
-		if err := rows.Scan(&h.ID, &h.GroupID, &h.GroupNameSnapshot, &h.Balance, &h.RecordedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.EntityType, &h.EntityID, &h.EntityNameSnapshot, &h.Balance, &h.RecordedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan group history: %w", err)
 		}
 		history = append(history, h)

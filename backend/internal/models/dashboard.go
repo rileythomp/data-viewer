@@ -73,10 +73,5 @@ type UpdateDashboardItemPositionsRequest struct {
 	Positions []DashboardItemPosition `json:"positions"`
 }
 
-type DashboardBalanceHistory struct {
-	ID                    int       `json:"id"`
-	DashboardID           int       `json:"dashboard_id"`
-	DashboardNameSnapshot string    `json:"dashboard_name_snapshot"`
-	Balance               float64   `json:"balance"`
-	RecordedAt            time.Time `json:"recorded_at"`
-}
+// DashboardBalanceHistory is an alias for EntityBalanceHistory for backward compatibility
+type DashboardBalanceHistory = EntityBalanceHistory
