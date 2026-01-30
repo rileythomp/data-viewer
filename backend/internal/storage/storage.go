@@ -20,8 +20,8 @@ type DatasetStorage interface {
 	// DeleteData removes all data for a dataset
 	DeleteData(tableName string) error
 
-	// GetColumns returns the column names for a dataset
-	GetColumns(datasetID int) ([]string, error)
+	// GetColumns returns the column names for a dataset by querying the table schema
+	GetColumns(datasetID int, tableName string) ([]string, error)
 
 	// CreateDatasetTable creates a new table for a dataset with the given columns
 	CreateDatasetTable(tableName string, columns []string) error

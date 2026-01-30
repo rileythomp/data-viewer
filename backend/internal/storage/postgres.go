@@ -145,22 +145,6 @@ func (s *PostgresStorage) StoreData(datasetID int, tableName string, columns []s
 		return fmt.Errorf("failed to create dataset table: %w", err)
 	}
 
-	// Store columns in dataset_columns table
-	_, err = tx.Exec("DELETE FROM dataset_columns WHERE dataset_id = $1", datasetID)
-	if err != nil {
-		return fmt.Errorf("failed to delete existing columns: %w", err)
-	}
-
-	for i, col := range columns {
-		_, err = tx.Exec(`
-			INSERT INTO dataset_columns (dataset_id, name, inferred_type, position)
-			VALUES ($1, $2, 'text', $3)
-		`, datasetID, col, i)
-		if err != nil {
-			return fmt.Errorf("failed to insert column: %w", err)
-		}
-	}
-
 	// Insert new data in batches
 	const batchSize = 100
 	for i := 0; i < len(rows); i += batchSize {
@@ -230,7 +214,7 @@ func (s *PostgresStorage) AppendData(datasetID int, tableName string, rows [][]a
 	fqTableName := fullyQualifiedTableName(tableName)
 
 	// Get columns
-	columns, err := s.GetColumns(datasetID)
+	columns, err := s.GetColumns(datasetID, tableName)
 	if err != nil {
 		return fmt.Errorf("failed to get columns: %w", err)
 	}
@@ -275,7 +259,7 @@ func (s *PostgresStorage) GetData(datasetID int, tableName string, page, pageSiz
 	fqTableName := fullyQualifiedTableName(tableName)
 
 	// Get columns
-	columns, err := s.GetColumns(datasetID)
+	columns, err := s.GetColumns(datasetID, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -386,13 +370,14 @@ func (s *PostgresStorage) DeleteData(tableName string) error {
 	return s.DropDatasetTable(tableName)
 }
 
-// GetColumns returns the column names for a dataset
-func (s *PostgresStorage) GetColumns(datasetID int) ([]string, error) {
+// GetColumns returns the column names for a dataset by querying the table schema
+func (s *PostgresStorage) GetColumns(datasetID int, tableName string) ([]string, error) {
+	// Query column names from information_schema, excluding row_index
 	rows, err := s.db.Query(`
-		SELECT name FROM dataset_columns
-		WHERE dataset_id = $1
-		ORDER BY position
-	`, datasetID)
+		SELECT column_name FROM information_schema.columns
+		WHERE table_schema = 'dataset_data' AND table_name = $1 AND column_name != 'row_index'
+		ORDER BY ordinal_position
+	`, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query columns: %w", err)
 	}

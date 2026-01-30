@@ -25,13 +25,11 @@ func New(db *sql.DB) *mux.Router {
 	accountRepo := repository.NewAccountRepository(db)
 	groupRepo := repository.NewAccountGroupRepository(db)
 	membershipRepo := repository.NewMembershipRepository(db)
-	settingsRepo := repository.NewSettingsRepository(db)
 	dashboardRepo := repository.NewDashboardRepository(db)
 	datasetRepo := repository.NewDatasetRepository(db, datasetStorage, syncService)
 	accountHandler := handlers.NewAccountHandler(accountRepo, membershipRepo)
 	groupHandler := handlers.NewAccountGroupHandler(groupRepo)
 	institutionHandler := handlers.NewInstitutionHandler(groupRepo)
-	settingsHandler := handlers.NewSettingsHandler(settingsRepo)
 	dashboardHandler := handlers.NewDashboardHandler(dashboardRepo)
 	datasetHandler := handlers.NewDatasetHandler(datasetRepo)
 
@@ -39,9 +37,6 @@ func New(db *sql.DB) *mux.Router {
 	api := r.PathPrefix("/api").Subrouter()
 
 	api.HandleFunc("/health", handlers.HealthCheck).Methods("GET")
-
-	// Unified list endpoint for main page
-	api.HandleFunc("/list", groupHandler.GetGroupedList).Methods("GET")
 
 	// Account routes - /all must come before /{id} routes
 	api.HandleFunc("/accounts/all", accountHandler.GetAllIncludingArchived).Methods("GET")
@@ -86,9 +81,6 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/institutions/{id}/account-positions", institutionHandler.UpdateAccountPositionsInInstitution).Methods("PATCH")
 	api.HandleFunc("/institutions/{id}/history", institutionHandler.GetHistory).Methods("GET")
 
-	// Settings routes
-	api.HandleFunc("/settings/total-formula", settingsHandler.GetTotalFormula).Methods("GET")
-	api.HandleFunc("/settings/total-formula", settingsHandler.UpdateTotalFormula).Methods("PATCH")
 
 	// Dashboard routes
 	api.HandleFunc("/dashboards", dashboardHandler.GetAll).Methods("GET")

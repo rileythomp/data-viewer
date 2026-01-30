@@ -1,13 +1,5 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-export const listApi = {
-  getGroupedList: async () => {
-    const res = await fetch(`${API_BASE}/list`);
-    if (!res.ok) throw new Error('Failed to fetch list');
-    return res.json();
-  },
-};
-
 export const groupsApi = {
   getAll: async () => {
     const res = await fetch(`${API_BASE}/groups`);
@@ -375,24 +367,6 @@ export const accountsApi = {
       body: JSON.stringify({ institution_id: institutionId }),
     });
     if (!res.ok) throw new Error('Failed to set institution');
-    return res.json();
-  },
-};
-
-export const settingsApi = {
-  getTotalFormula: async () => {
-    const res = await fetch(`${API_BASE}/settings/total-formula`);
-    if (!res.ok) throw new Error('Failed to fetch total formula');
-    return res.json();
-  },
-
-  updateTotalFormula: async (isEnabled, formula) => {
-    const res = await fetch(`${API_BASE}/settings/total-formula`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_enabled: isEnabled, formula }),
-    });
-    if (!res.ok) throw new Error('Failed to update total formula');
     return res.json();
   },
 };
