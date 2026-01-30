@@ -1,6 +1,17 @@
 export default function BalanceHistoryTable({ history, showAccountName = false }) {
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString();
+    const date = new Date(dateString);
+    const datePart = date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const timePart = date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).replace(' ', '');
+    return `${datePart}, ${timePart}`;
   };
 
   const formatCurrency = (amount) => {
