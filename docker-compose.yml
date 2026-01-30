@@ -23,7 +23,7 @@ services:
     image: metabase/metabase-enterprise:latest
     container_name: metabase-riley
     ports:
-      - "3300:3000"
+      - "4000:3000"
     environment:
       MB_DB_TYPE: postgres
       MB_DB_HOST: postgres
