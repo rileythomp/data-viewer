@@ -585,6 +585,43 @@
   color: #EF4444;
 }
 
+.panel-account-value-clickable {
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2));
+  border-radius: var(--radius-sm);
+  transition: background-color var(--transition-fast);
+}
+
+.panel-account-value-clickable:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.panel-balance-input {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  font-family: 'Space Grotesk', var(--font-sans);
+  width: 100px;
+  padding: var(--space-1) var(--space-2);
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+  text-align: right;
+}
+
+.panel-balance-input::-webkit-outer-spin-button,
+.panel-balance-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.panel-balance-input[type=number] {
+  -moz-appearance: textfield;
+}
+
 /* Legacy NavBar (keeping for backward compatibility) */
 .navbar {
   display: flex;
