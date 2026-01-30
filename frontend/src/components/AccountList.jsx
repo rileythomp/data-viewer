@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { accountsApi, dashboardsApi } from '../services/api';
@@ -15,6 +15,9 @@ export default function AccountList() {
   const [dashboardHistory, setDashboardHistory] = useState([]);
   const [balanceSheetDashboard, setBalanceSheetDashboard] = useState(null);
   const [expandedItems, setExpandedItems] = useState(new Set());
+  const [editingAccountId, setEditingAccountId] = useState(null);
+  const [editingBalanceValue, setEditingBalanceValue] = useState('');
+  const balanceInputRef = useRef(null);
 
   const fetchData = async (isInitialLoad = false) => {
     try {
@@ -68,6 +71,13 @@ export default function AccountList() {
     fetchData(true);
   }, []);
 
+  useEffect(() => {
+    if (editingAccountId && balanceInputRef.current) {
+      balanceInputRef.current.focus();
+      balanceInputRef.current.select();
+    }
+  }, [editingAccountId]);
+
   const handleToggleExpand = (itemId) => {
     setExpandedItems((prev) => {
       const next = new Set(prev);
@@ -83,6 +93,66 @@ export default function AccountList() {
   const handleUpdateBalance = async (id, balance) => {
     await accountsApi.updateBalance(id, balance);
     await fetchData();
+  };
+
+  const handleBalanceClick = (e, account) => {
+    e.stopPropagation();
+    if (account.is_calculated) return;
+    setEditingBalanceValue(account.current_balance.toString());
+    setEditingAccountId(account.id);
+  };
+
+  const handleBalanceSubmit = async (account) => {
+    const balanceNum = parseFloat(editingBalanceValue);
+    if (!isNaN(balanceNum) && balanceNum !== account.current_balance) {
+      try {
+        await handleUpdateBalance(account.id, balanceNum);
+      } catch (err) {
+        // Error handled by fetchData
+      }
+    }
+    setEditingAccountId(null);
+    setEditingBalanceValue('');
+  };
+
+  const handleBalanceKeyDown = (e, account) => {
+    if (e.key === 'Enter') {
+      handleBalanceSubmit(account);
+    } else if (e.key === 'Escape') {
+      setEditingAccountId(null);
+      setEditingBalanceValue('');
+    }
+  };
+
+  const renderAccountBalance = (account) => {
+    const isNegative = account.current_balance < 0;
+    const isEditing = editingAccountId === account.id;
+
+    if (isEditing) {
+      return (
+        <input
+          ref={balanceInputRef}
+          type="number"
+          step="0.01"
+          value={editingBalanceValue}
+          onChange={(e) => setEditingBalanceValue(e.target.value)}
+          onKeyDown={(e) => handleBalanceKeyDown(e, account)}
+          onBlur={() => handleBalanceSubmit(account)}
+          className="panel-balance-input"
+          onClick={(e) => e.stopPropagation()}
+        />
+      );
+    }
+
+    return (
+      <span
+        className={`panel-account-value ${isNegative ? 'panel-account-value-negative' : ''} ${!account.is_calculated ? 'panel-account-value-clickable' : ''}`}
+        onClick={(e) => handleBalanceClick(e, account)}
+        title={account.is_calculated ? 'Calculated balance' : 'Click to edit balance'}
+      >
+        {formatCurrency(account.current_balance)}
+      </span>
+    );
   };
 
   const formatCurrency = (amount) => {
@@ -244,24 +314,19 @@ export default function AccountList() {
                         {formatCurrency(item.institution.total_balance)}
                       </span>
                     </div>
-                    {isExpanded && item.institution.accounts?.map((account) => {
-                      const isNegative = account.current_balance < 0;
-                      return (
-                        <div key={account.id} className="panel-account">
-                          <div className="panel-account-left">
-                            <span
-                              className="panel-account-name"
-                              onClick={() => navigate(`/accounts/${account.id}`)}
-                            >
-                              {account.account_name}
-                            </span>
-                          </div>
-                          <span className={`panel-account-value ${isNegative ? 'panel-account-value-negative' : ''}`}>
-                            {formatCurrency(account.current_balance)}
+                    {isExpanded && item.institution.accounts?.map((account) => (
+                      <div key={account.id} className="panel-account">
+                        <div className="panel-account-left">
+                          <span
+                            className="panel-account-name"
+                            onClick={() => navigate(`/accounts/${account.id}`)}
+                          >
+                            {account.account_name}
                           </span>
                         </div>
-                      );
-                    })}
+                        {renderAccountBalance(account)}
+                      </div>
+                    ))}
                   </div>
                 );
               } else if (item.type === 'group') {
@@ -296,28 +361,22 @@ export default function AccountList() {
                         {formatCurrency(item.group.total_balance)}
                       </span>
                     </div>
-                    {isExpanded && item.group.accounts?.map((account) => {
-                      const isNegative = account.current_balance < 0;
-                      return (
-                        <div key={account.id} className="panel-account">
-                          <div className="panel-account-left">
-                            <span
-                              className="panel-account-name"
-                              onClick={() => navigate(`/accounts/${account.id}`)}
-                            >
-                              {account.account_name}
-                            </span>
-                          </div>
-                          <span className={`panel-account-value ${isNegative ? 'panel-account-value-negative' : ''}`}>
-                            {formatCurrency(account.current_balance)}
+                    {isExpanded && item.group.accounts?.map((account) => (
+                      <div key={account.id} className="panel-account">
+                        <div className="panel-account-left">
+                          <span
+                            className="panel-account-name"
+                            onClick={() => navigate(`/accounts/${account.id}`)}
+                          >
+                            {account.account_name}
                           </span>
                         </div>
-                      );
-                    })}
+                        {renderAccountBalance(account)}
+                      </div>
+                    ))}
                   </div>
                 );
               } else if (item.type === 'account') {
-                const isNegative = item.account.current_balance < 0;
                 return (
                   <div key={`account-${item.account.id}`} className="panel-account" style={{ paddingLeft: 'var(--space-5)' }}>
                     <div className="panel-account-left">
@@ -328,9 +387,7 @@ export default function AccountList() {
                         {item.account.account_name}
                       </span>
                     </div>
-                    <span className={`panel-account-value ${isNegative ? 'panel-account-value-negative' : ''}`}>
-                      {formatCurrency(item.account.current_balance)}
-                    </span>
+                    {renderAccountBalance(item.account)}
                   </div>
                 );
               }
