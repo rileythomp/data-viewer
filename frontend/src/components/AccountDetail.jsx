@@ -427,17 +427,19 @@ export default function AccountDetail() {
                   >
                     {group.group_name}
                   </span>
-                  <button
-                    onClick={() => handleRemoveFromGroup(group.id)}
-                    className="group-tag-remove"
-                    title="Remove from group"
-                  >
-                    <X size={14} />
-                  </button>
+                  {isEditMode && (
+                    <button
+                      onClick={() => handleRemoveFromGroup(group.id)}
+                      className="group-tag-remove"
+                      title="Remove from group"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
-            {getAvailableGroups().length > 0 && (
+            {isEditMode && getAvailableGroups().length > 0 && (
               <select
                 className="group-add-dropdown"
                 value=""
@@ -476,17 +478,19 @@ export default function AccountDetail() {
                   >
                     {getAccountInstitution().name}
                   </span>
-                  <button
-                    onClick={handleRemoveFromInstitution}
-                    className="group-tag-remove"
-                    title="Remove from institution"
-                  >
-                    <X size={14} />
-                  </button>
+                  {isEditMode && (
+                    <button
+                      onClick={handleRemoveFromInstitution}
+                      className="group-tag-remove"
+                      title="Remove from institution"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
               )}
             </div>
-            {getAvailableInstitutions().length > 0 && (
+            {isEditMode && getAvailableInstitutions().length > 0 && (
               <select
                 className="group-add-dropdown"
                 value=""
