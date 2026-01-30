@@ -93,13 +93,8 @@ type GroupedAccountsResponse struct {
 	TotalBalance float64    `json:"total_balance"`
 }
 
-type GroupBalanceHistory struct {
-	ID                int       `json:"id"`
-	GroupID           int       `json:"group_id"`
-	GroupNameSnapshot string    `json:"group_name_snapshot"`
-	Balance           float64   `json:"balance"`
-	RecordedAt        time.Time `json:"recorded_at"`
-}
+// GroupBalanceHistory is an alias for EntityBalanceHistory for backward compatibility
+type GroupBalanceHistory = EntityBalanceHistory
 
 // Institution types - institutions are stored in the same table as groups
 // with entity_type = 'institution'

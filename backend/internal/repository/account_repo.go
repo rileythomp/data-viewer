@@ -293,8 +293,8 @@ func (r *AccountRepository) Create(req *models.CreateAccountRequest) (*models.Ac
 
 	// Create initial history record
 	historyQuery := `
-		INSERT INTO balance_history (account_id, account_name_snapshot, balance)
-		VALUES ($1, $2, $3)
+		INSERT INTO entity_balance_history (entity_type, entity_id, entity_name_snapshot, balance)
+		VALUES ('account', $1, $2, $3)
 	`
 	_, err = tx.Exec(historyQuery, a.ID, a.AccountName, a.CurrentBalance)
 	if err != nil {
@@ -384,8 +384,8 @@ func (r *AccountRepository) UpdateBalance(id int, balance float64) (*models.Acco
 
 	// Create history record with the account name snapshot
 	historyQuery := `
-		INSERT INTO balance_history (account_id, account_name_snapshot, balance)
-		VALUES ($1, $2, $3)
+		INSERT INTO entity_balance_history (entity_type, entity_id, entity_name_snapshot, balance)
+		VALUES ('account', $1, $2, $3)
 	`
 	_, err = tx.Exec(historyQuery, id, accountName, balance)
 	if err != nil {
@@ -570,9 +570,9 @@ func (r *AccountRepository) UpdateInfo(id int, info string) (*models.Account, er
 
 func (r *AccountRepository) GetHistory(accountID int) ([]models.BalanceHistory, error) {
 	query := `
-		SELECT id, account_id, account_name_snapshot, balance, recorded_at
-		FROM balance_history
-		WHERE account_id = $1
+		SELECT id, entity_type, entity_id, entity_name_snapshot, balance, recorded_at
+		FROM entity_balance_history
+		WHERE entity_type = 'account' AND entity_id = $1
 		ORDER BY recorded_at DESC
 	`
 	rows, err := r.db.Query(query, accountID)
@@ -584,7 +584,7 @@ func (r *AccountRepository) GetHistory(accountID int) ([]models.BalanceHistory, 
 	var history []models.BalanceHistory
 	for rows.Next() {
 		var h models.BalanceHistory
-		if err := rows.Scan(&h.ID, &h.AccountID, &h.AccountNameSnapshot, &h.Balance, &h.RecordedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.EntityType, &h.EntityID, &h.EntityNameSnapshot, &h.Balance, &h.RecordedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan history: %w", err)
 		}
 		history = append(history, h)
@@ -786,8 +786,8 @@ func (r *AccountRepository) Delete(id int) error {
 		return fmt.Errorf("failed to delete memberships: %w", err)
 	}
 
-	// Delete from balance_history
-	_, err = tx.Exec("DELETE FROM balance_history WHERE account_id = $1", id)
+	// Delete from entity_balance_history
+	_, err = tx.Exec("DELETE FROM entity_balance_history WHERE entity_type = 'account' AND entity_id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete history: %w", err)
 	}
@@ -861,8 +861,8 @@ func (r *AccountRepository) insertHistoryRecordsTx(tx *sql.Tx, entries []History
 	}
 
 	query := `
-		INSERT INTO balance_history (account_id, account_name_snapshot, balance)
-		VALUES ($1, $2, $3)
+		INSERT INTO entity_balance_history (entity_type, entity_id, entity_name_snapshot, balance)
+		VALUES ('account', $1, $2, $3)
 	`
 	stmt, err := tx.Prepare(query)
 	if err != nil {
@@ -998,8 +998,8 @@ func (r *AccountRepository) insertGroupHistoryRecordsTx(tx *sql.Tx, groupIDs []i
 
 		// Insert history record
 		_, err = tx.Exec(`
-			INSERT INTO group_balance_history (group_id, group_name_snapshot, balance)
-			VALUES ($1, $2, $3)
+			INSERT INTO entity_balance_history (entity_type, entity_id, entity_name_snapshot, balance)
+			VALUES ('group', $1, $2, $3)
 		`, groupID, groupName, totalBalance)
 		if err != nil {
 			return err
@@ -1194,8 +1194,8 @@ func (r *AccountRepository) insertDashboardHistoryRecordsTx(tx *sql.Tx, dashboar
 
 		// Insert history record
 		_, err = tx.Exec(`
-			INSERT INTO dashboard_balance_history (dashboard_id, dashboard_name_snapshot, balance)
-			VALUES ($1, $2, $3)
+			INSERT INTO entity_balance_history (entity_type, entity_id, entity_name_snapshot, balance)
+			VALUES ('dashboard', $1, $2, $3)
 		`, dashboardID, dashboardName, totalBalance)
 		if err != nil {
 			return err

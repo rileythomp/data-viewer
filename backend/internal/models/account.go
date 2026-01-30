@@ -23,13 +23,18 @@ type AccountInGroup struct {
 	PositionInGroup int `json:"position_in_group"`
 }
 
-type BalanceHistory struct {
-	ID                  int       `json:"id"`
-	AccountID           int       `json:"account_id"`
-	AccountNameSnapshot string    `json:"account_name_snapshot"`
-	Balance             float64   `json:"balance"`
-	RecordedAt          time.Time `json:"recorded_at"`
+// EntityBalanceHistory represents balance history for any entity (account, group, or dashboard)
+type EntityBalanceHistory struct {
+	ID                 int       `json:"id"`
+	EntityType         string    `json:"entity_type"`          // "account", "group", or "dashboard"
+	EntityID           int       `json:"entity_id"`
+	EntityNameSnapshot string    `json:"entity_name_snapshot"`
+	Balance            float64   `json:"balance"`
+	RecordedAt         time.Time `json:"recorded_at"`
 }
+
+// BalanceHistory is an alias for backward compatibility in API responses
+type BalanceHistory = EntityBalanceHistory
 
 type CreateAccountRequest struct {
 	AccountName    string        `json:"account_name"`
