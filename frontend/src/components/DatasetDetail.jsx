@@ -212,7 +212,7 @@ export default function DatasetDetail() {
                 </div>
                 <div className="upload-metadata-item">
                     <span className="upload-metadata-label">Columns</span>
-                    <span className="upload-metadata-value">{dataset.columns?.length || 0}</span>
+                    <span className="upload-metadata-value">{dataResponse?.columns?.length || 0}</span>
                 </div>
                 <div className="upload-metadata-item">
                     <span className="upload-metadata-label">Last Synced</span>
