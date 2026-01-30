@@ -1,13 +1,5 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-export const listApi = {
-  getGroupedList: async () => {
-    const res = await fetch(`${API_BASE}/list`);
-    if (!res.ok) throw new Error('Failed to fetch list');
-    return res.json();
-  },
-};
-
 export const groupsApi = {
   getAll: async () => {
     const res = await fetch(`${API_BASE}/groups`);

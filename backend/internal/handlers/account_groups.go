@@ -173,21 +173,6 @@ func (h *AccountGroupHandler) UpdateAccountPositionsInGroup(w http.ResponseWrite
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func (h *AccountGroupHandler) GetGroupedList(w http.ResponseWriter, r *http.Request) {
-	response, err := h.groupRepo.GetGroupedList()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if response.Items == nil {
-		response.Items = []models.ListItem{}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
 func (h *AccountGroupHandler) GetAllIncludingArchived(w http.ResponseWriter, r *http.Request) {
 	groups, err := h.groupRepo.GetAllIncludingArchived()
 	if err != nil {

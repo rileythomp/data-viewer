@@ -40,9 +40,6 @@ func New(db *sql.DB) *mux.Router {
 
 	api.HandleFunc("/health", handlers.HealthCheck).Methods("GET")
 
-	// Unified list endpoint for main page
-	api.HandleFunc("/list", groupHandler.GetGroupedList).Methods("GET")
-
 	// Account routes - /all must come before /{id} routes
 	api.HandleFunc("/accounts/all", accountHandler.GetAllIncludingArchived).Methods("GET")
 	api.HandleFunc("/accounts", accountHandler.GetAll).Methods("GET")
