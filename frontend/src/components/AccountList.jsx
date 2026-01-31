@@ -198,7 +198,7 @@ export default function AccountList() {
 
       {/* Header */}
       <div className="overview-header">
-        <h1>Overview</h1>
+        <h1>{mainDashboard?.name || 'Overview'}</h1>
         <span className="header-date">{getFormattedDate()}</span>
       </div>
 
