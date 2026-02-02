@@ -225,7 +225,7 @@ func (r *DashboardRepository) GetWithItems(id int) (*models.DashboardWithItems, 
 func (r *DashboardRepository) getGroupsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.AccountGroupWithAccounts, error) {
 	// Get all non-archived groups (excluding institutions)
 	groupsQuery := `
-		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		SELECT id, name, description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 		FROM account_groups
 		WHERE is_archived = false AND entity_type = 'group'
 	`
@@ -239,7 +239,7 @@ func (r *DashboardRepository) getGroupsWithAccounts(accountMap map[int]*models.A
 	for groupRows.Next() {
 		var g models.AccountGroup
 		var formulaJSON []byte
-		err := groupRows.Scan(&g.ID, &g.GroupName, &g.GroupDescription, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.CreatedAt, &g.UpdatedAt)
+		err := groupRows.Scan(&g.ID, &g.Name, &g.Description, &g.Color, &g.Position, &g.IsArchived, &g.IsCalculated, &formulaJSON, &g.EntityType, &g.CreatedAt, &g.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -303,10 +303,10 @@ func (r *DashboardRepository) getGroupsWithAccounts(accountMap map[int]*models.A
 	return result, nil
 }
 
-func (r *DashboardRepository) getInstitutionsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.InstitutionWithAccounts, error) {
+func (r *DashboardRepository) getInstitutionsWithAccounts(accountMap map[int]*models.Account) (map[int]*models.AccountGroupWithAccounts, error) {
 	// Get all non-archived institutions
 	institutionsQuery := `
-		SELECT id, group_name, group_description, color, position, is_archived, is_calculated, formula, created_at, updated_at
+		SELECT id, name, description, color, position, is_archived, is_calculated, formula, entity_type, created_at, updated_at
 		FROM account_groups
 		WHERE is_archived = false AND entity_type = 'institution'
 	`
@@ -316,11 +316,11 @@ func (r *DashboardRepository) getInstitutionsWithAccounts(accountMap map[int]*mo
 	}
 	defer institutionRows.Close()
 
-	var institutions []models.Institution
+	var institutions []models.AccountGroup
 	for institutionRows.Next() {
-		var i models.Institution
+		var i models.AccountGroup
 		var formulaJSON []byte
-		err := institutionRows.Scan(&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.CreatedAt, &i.UpdatedAt)
+		err := institutionRows.Scan(&i.ID, &i.Name, &i.Description, &i.Color, &i.Position, &i.IsArchived, &i.IsCalculated, &formulaJSON, &i.EntityType, &i.CreatedAt, &i.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -359,7 +359,7 @@ func (r *DashboardRepository) getInstitutionsWithAccounts(accountMap map[int]*mo
 	}
 
 	// Build institutions with accounts and calculate balances
-	result := make(map[int]*models.InstitutionWithAccounts)
+	result := make(map[int]*models.AccountGroupWithAccounts)
 	for _, inst := range institutions {
 		accounts := institutionAccounts[inst.ID]
 
@@ -376,8 +376,8 @@ func (r *DashboardRepository) getInstitutionsWithAccounts(accountMap map[int]*mo
 			}
 		}
 
-		result[inst.ID] = &models.InstitutionWithAccounts{
-			Institution:  inst,
+		result[inst.ID] = &models.AccountGroupWithAccounts{
+			AccountGroup: inst,
 			TotalBalance: totalBalance,
 			Accounts:     accounts,
 		}

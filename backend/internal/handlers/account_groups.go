@@ -61,7 +61,7 @@ func (h *AccountGroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.GroupName == "" {
+	if req.Name == "" {
 		http.Error(w, "Group name is required", http.StatusBadRequest)
 		return
 	}
@@ -91,7 +91,7 @@ func (h *AccountGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.GroupName == "" {
+	if req.Name == "" {
 		http.Error(w, "Group name is required", http.StatusBadRequest)
 		return
 	}

@@ -8,17 +8,17 @@ type FormulaItem struct {
 }
 
 type AccountGroup struct {
-	ID               int           `json:"id"`
-	GroupName        string        `json:"group_name"`
-	GroupDescription string        `json:"group_description"`
-	Color            string        `json:"color"`
-	Position         int           `json:"position"`
-	IsArchived       bool          `json:"is_archived"`
-	IsCalculated     bool          `json:"is_calculated"`
-	Formula          []FormulaItem `json:"formula,omitempty"`
-	EntityType       string        `json:"entity_type"`
-	CreatedAt        time.Time     `json:"created_at"`
-	UpdatedAt        time.Time     `json:"updated_at"`
+	ID           int           `json:"id"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	Color        string        `json:"color"`
+	Position     int           `json:"position"`
+	IsArchived   bool          `json:"is_archived"`
+	IsCalculated bool          `json:"is_calculated"`
+	Formula      []FormulaItem `json:"formula,omitempty"`
+	EntityType   string        `json:"entity_type"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
 type AccountGroupWithAccounts struct {
@@ -28,19 +28,19 @@ type AccountGroupWithAccounts struct {
 }
 
 type CreateGroupRequest struct {
-	GroupName        string        `json:"group_name"`
-	GroupDescription string        `json:"group_description"`
-	Color            string        `json:"color"`
-	IsCalculated     bool          `json:"is_calculated"`
-	Formula          []FormulaItem `json:"formula,omitempty"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	Color        string        `json:"color"`
+	IsCalculated bool          `json:"is_calculated"`
+	Formula      []FormulaItem `json:"formula,omitempty"`
 }
 
 type UpdateGroupRequest struct {
-	GroupName        string        `json:"group_name"`
-	GroupDescription string        `json:"group_description"`
-	Color            string        `json:"color"`
-	IsCalculated     bool          `json:"is_calculated"`
-	Formula          []FormulaItem `json:"formula,omitempty"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	Color        string        `json:"color"`
+	IsCalculated bool          `json:"is_calculated"`
+	Formula      []FormulaItem `json:"formula,omitempty"`
 }
 
 type UpdateGroupPositionsRequest struct {
@@ -85,7 +85,7 @@ type ListItem struct {
 	Type        string                    `json:"type"` // "group", "account", or "institution"
 	Group       *AccountGroupWithAccounts `json:"group,omitempty"`
 	Account     *Account                  `json:"account,omitempty"`
-	Institution *InstitutionWithAccounts  `json:"institution,omitempty"`
+	Institution *AccountGroupWithAccounts `json:"institution,omitempty"`
 }
 
 type GroupedAccountsResponse struct {
@@ -95,42 +95,3 @@ type GroupedAccountsResponse struct {
 
 // GroupBalanceHistory is an alias for EntityBalanceHistory for backward compatibility
 type GroupBalanceHistory = EntityBalanceHistory
-
-// Institution types - institutions are stored in the same table as groups
-// with entity_type = 'institution'
-
-type Institution struct {
-	ID               int           `json:"id"`
-	Name             string        `json:"name"`
-	Description      string        `json:"description"`
-	Color            string        `json:"color"`
-	Position         int           `json:"position"`
-	IsArchived       bool          `json:"is_archived"`
-	IsCalculated     bool          `json:"is_calculated"`
-	Formula          []FormulaItem `json:"formula,omitempty"`
-	TotalBalance     float64       `json:"total_balance,omitempty"`
-	CreatedAt        time.Time     `json:"created_at"`
-	UpdatedAt        time.Time     `json:"updated_at"`
-}
-
-type InstitutionWithAccounts struct {
-	Institution
-	TotalBalance float64          `json:"total_balance"`
-	Accounts     []AccountInGroup `json:"accounts"`
-}
-
-type CreateInstitutionRequest struct {
-	Name         string        `json:"name"`
-	Description  string        `json:"description"`
-	Color        string        `json:"color"`
-	IsCalculated bool          `json:"is_calculated"`
-	Formula      []FormulaItem `json:"formula,omitempty"`
-}
-
-type UpdateInstitutionRequest struct {
-	Name         string        `json:"name"`
-	Description  string        `json:"description"`
-	Color        string        `json:"color"`
-	IsCalculated bool          `json:"is_calculated"`
-	Formula      []FormulaItem `json:"formula,omitempty"`
-}

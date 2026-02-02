@@ -134,17 +134,17 @@ export default function GroupDetail() {
   // Save handlers for inline editing
   const handleSaveName = async (name) => {
     if (!name.trim()) throw new Error('Group name is required');
-    await groupsApi.update(id, name.trim(), group.group_description, group.color, group.is_calculated, group.formula);
+    await groupsApi.update(id, name.trim(), group.description, group.color, group.is_calculated, group.formula);
     await fetchGroup();
   };
 
   const handleSaveDescription = async (description) => {
-    await groupsApi.update(id, group.group_name, description || '', group.color, group.is_calculated, group.formula);
+    await groupsApi.update(id, group.name, description || '', group.color, group.is_calculated, group.formula);
     await fetchGroup();
   };
 
   const handleSaveColor = async (color) => {
-    await groupsApi.update(id, group.group_name, group.group_description, color, group.is_calculated, group.formula);
+    await groupsApi.update(id, group.name, group.description, color, group.is_calculated, group.formula);
     await fetchGroup();
   };
 
@@ -153,7 +153,7 @@ export default function GroupDetail() {
 
     // If turning off calculated mode, save immediately
     if (!newIsCalculated) {
-      await groupsApi.update(id, group.group_name, group.group_description, group.color, false, null);
+      await groupsApi.update(id, group.name, group.description, group.color, false, null);
       await fetchGroup();
     }
   };
@@ -173,12 +173,12 @@ export default function GroupDetail() {
       coefficient: item.coefficient
     }));
 
-    await groupsApi.update(id, group.group_name, group.group_description, group.color, isCalculated, formulaData.length > 0 ? formulaData : null);
+    await groupsApi.update(id, group.name, group.description, group.color, isCalculated, formulaData.length > 0 ? formulaData : null);
     await fetchGroup();
   };
 
   const handleArchive = async () => {
-    if (window.confirm(`Are you sure you want to archive "${group.group_name}"? The accounts in this group will become ungrouped.`)) {
+    if (window.confirm(`Are you sure you want to archive "${group.name}"? The accounts in this group will become ungrouped.`)) {
       await groupsApi.archive(group.id);
       navigate('/');
     }
@@ -309,7 +309,7 @@ export default function GroupDetail() {
             )}
             {isEditMode ? (
               <InlineEditableText
-                value={group.group_name}
+                value={group.name}
                 onSave={handleSaveName}
                 type="input"
                 className="detail-title-input"
@@ -317,7 +317,7 @@ export default function GroupDetail() {
                 autoFocus
               />
             ) : (
-              <h1 className="detail-title">{group.group_name}</h1>
+              <h1 className="detail-title">{group.name}</h1>
             )}
           </div>
 
@@ -365,12 +365,12 @@ export default function GroupDetail() {
             </div>
           )}
 
-          {(group.group_description || isEditMode) && (
+          {(group.description || isEditMode) && (
             <div className="detail-info-section">
               <span className="detail-info-label">Description</span>
               {isEditMode ? (
                 <InlineEditableText
-                  value={group.group_description || ''}
+                  value={group.description || ''}
                   onSave={handleSaveDescription}
                   type="textarea"
                   className="detail-info-textarea"
@@ -378,7 +378,7 @@ export default function GroupDetail() {
                   rows={4}
                 />
               ) : (
-                <p className="detail-info-text">{group.group_description}</p>
+                <p className="detail-info-text">{group.description}</p>
               )}
             </div>
           )}

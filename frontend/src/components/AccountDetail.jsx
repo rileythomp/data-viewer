@@ -425,7 +425,7 @@ export default function AccountDetail() {
                     onClick={() => navigate(`/groups/${group.id}`)}
                     title="View group"
                   >
-                    {group.group_name}
+                    {group.name}
                   </span>
                   {isEditMode && (
                     <button
@@ -452,7 +452,7 @@ export default function AccountDetail() {
                 <option value="">Add to group...</option>
                 {getAvailableGroups().map(group => (
                   <option key={group.id} value={group.id}>
-                    {group.group_name}
+                    {group.name}
                   </option>
                 ))}
               </select>

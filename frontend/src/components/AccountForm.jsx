@@ -91,7 +91,7 @@ export default function AccountForm({ onSubmit, onCancel, accounts = [], groups 
             <option value="">No group</option>
             {groups.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.group_name}
+                {g.name}
               </option>
             ))}
           </select>

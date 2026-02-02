@@ -37,8 +37,8 @@ export const groupsApi = {
 
   create: async (groupName, groupDescription, color, isCalculated = false, formula = null) => {
     const payload = {
-      group_name: groupName,
-      group_description: groupDescription,
+      name: groupName,
+      description: groupDescription,
       color,
       is_calculated: isCalculated,
     };
@@ -56,8 +56,8 @@ export const groupsApi = {
 
   update: async (id, groupName, groupDescription, color, isCalculated = false, formula = null) => {
     const payload = {
-      group_name: groupName,
-      group_description: groupDescription,
+      name: groupName,
+      description: groupDescription,
       color,
       is_calculated: isCalculated,
     };

@@ -233,7 +233,7 @@ export default function AccountList() {
                   let itemKey = '';
 
                   if (item.type === 'group') {
-                    name = item.group.group_name;
+                    name = item.group.name;
                     balance = item.group.total_balance;
                     itemKey = `group-${item.group.id}`;
                   } else if (item.type === 'institution') {
@@ -353,7 +353,7 @@ export default function AccountList() {
                               navigate(`/groups/${item.group.id}`);
                             }}
                           >
-                            {item.group.group_name}
+                            {item.group.name}
                           </span>
                         </div>
                       </div>

@@ -421,14 +421,14 @@ export default function DashboardDetail() {
               selectedIds={selectedGroups}
               onChange={handleGroupsChange}
               placeholder="Select groups..."
-              labelKey="group_name"
+              labelKey="name"
               renderOption={(group) => (
                 <>
                   <div
                     className="group-color-dot"
                     style={{ backgroundColor: group.color }}
                   />
-                  <span>{group.group_name}</span>
+                  <span>{group.name}</span>
                 </>
               )}
               renderChip={(group) => (
@@ -437,7 +437,7 @@ export default function DashboardDetail() {
                     className="group-color-dot"
                     style={{ backgroundColor: group.color }}
                   />
-                  <span>{group.group_name}</span>
+                  <span>{group.name}</span>
                 </>
               )}
             />
@@ -568,7 +568,7 @@ export default function DashboardDetail() {
                               }}
                               title="View group details"
                             >
-                              {item.group.group_name}
+                              {item.group.name}
                             </h3>
                             <span className="group-account-count">
                               ({item.group.accounts?.length || 0} accounts)
@@ -692,7 +692,7 @@ export default function DashboardDetail() {
                         />
                         <div className="group-card-header">
                           <div className="group-header-left">
-                            <h3 className="group-name">{activeItem.group.group_name}</h3>
+                            <h3 className="group-name">{activeItem.group.name}</h3>
                             <span className="group-account-count">
                               ({activeItem.group.accounts?.length || 0} accounts)
                             </span>

@@ -26,7 +26,7 @@ func (h *InstitutionHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if institutions == nil {
-		institutions = []models.InstitutionWithAccounts{}
+		institutions = []models.AccountGroupWithAccounts{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(institutions)
@@ -55,7 +55,7 @@ func (h *InstitutionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *InstitutionHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req models.CreateInstitutionRequest
+	var req models.CreateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -85,7 +85,7 @@ func (h *InstitutionHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req models.UpdateInstitutionRequest
+	var req models.UpdateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -152,7 +152,7 @@ func (h *InstitutionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	err = h.groupRepo.DeleteInstitution(id)
 	if err != nil {
-		if err.Error() == "institution not found" {
+		if err.Error() == "group not found" {
 			http.Error(w, "Institution not found", http.StatusNotFound)
 			return
 		}
@@ -171,7 +171,7 @@ func (h *InstitutionHandler) GetAllIncludingArchived(w http.ResponseWriter, r *h
 		return
 	}
 	if institutions == nil {
-		institutions = []models.Institution{}
+		institutions = []models.AccountGroup{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(institutions)

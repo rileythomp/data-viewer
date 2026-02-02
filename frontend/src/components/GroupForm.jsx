@@ -14,8 +14,8 @@ const COLOR_PRESETS = [
 ];
 
 export default function GroupForm({ onSubmit, onCancel, initialData = null, accounts = [], allAccounts = [] }) {
-  const [groupName, setGroupName] = useState(initialData?.group_name || '');
-  const [groupDescription, setGroupDescription] = useState(initialData?.group_description || '');
+  const [groupName, setGroupName] = useState(initialData?.name || '');
+  const [groupDescription, setGroupDescription] = useState(initialData?.description || '');
   const [color, setColor] = useState(initialData?.color || COLOR_PRESETS[0]);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
