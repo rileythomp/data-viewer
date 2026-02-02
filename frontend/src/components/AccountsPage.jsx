@@ -161,7 +161,7 @@ export default function AccountsPage() {
   }
 
   const sortedAccounts = [...accounts].sort((a, b) => a.account_name.localeCompare(b.account_name));
-  const sortedGroups = [...groups].sort((a, b) => a.group_name.localeCompare(b.group_name));
+  const sortedGroups = [...groups].sort((a, b) => a.name.localeCompare(b.name));
   const sortedInstitutions = [...institutions].sort((a, b) => a.name.localeCompare(b.name));
   const currentItems = activeTab === 'accounts' ? sortedAccounts : activeTab === 'groups' ? sortedGroups : sortedInstitutions;
 
@@ -239,7 +239,7 @@ export default function AccountsPage() {
           </div>
         ) : (
           currentItems.map((item) => {
-            const name = activeTab === 'accounts' ? item.account_name : activeTab === 'groups' ? item.group_name : item.name;
+            const name = activeTab === 'accounts' ? item.account_name : activeTab === 'groups' ? item.name : item.name;
             const itemType = activeTab === 'accounts' ? 'account' : activeTab === 'groups' ? 'group' : 'institution';
             const isArchived = item.is_archived;
 
@@ -301,7 +301,7 @@ export default function AccountsPage() {
 
       <DeleteConfirmModal
         isOpen={deleteModal.isOpen}
-        itemName={deleteModal.item ? (deleteModal.type === 'account' ? deleteModal.item.account_name : deleteModal.type === 'group' ? deleteModal.item.group_name : deleteModal.item.name) : ''}
+        itemName={deleteModal.item ? (deleteModal.type === 'account' ? deleteModal.item.account_name : deleteModal.type === 'group' ? deleteModal.item.name : deleteModal.item.name) : ''}
         itemType={deleteModal.type || 'item'}
         onConfirm={handleDelete}
         onCancel={closeDeleteModal}

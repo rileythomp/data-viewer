@@ -28,7 +28,7 @@ export default function DashboardFormulaDisplay({
       return account?.account_name || 'Unknown Account';
     } else if (type === 'group') {
       const group = groups.find(g => g.id === id);
-      return group?.group_name || 'Unknown Group';
+      return group?.name || 'Unknown Group';
     } else {
       const institution = institutions.find(i => i.id === id);
       return institution?.name || 'Unknown Institution';
@@ -122,7 +122,7 @@ export default function DashboardFormulaDisplay({
 
   const getItemLabel = (item) => {
     if (selectedType === 'account') return item.account_name;
-    if (selectedType === 'group') return item.group_name;
+    if (selectedType === 'group') return item.name;
     return item.name;
   };
 

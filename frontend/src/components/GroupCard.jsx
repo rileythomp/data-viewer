@@ -63,7 +63,7 @@ export default function GroupCard({
             {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </button>
           <h3 className="group-name" onClick={handleNavigateToGroup} title="View group details">
-            {group.group_name}
+            {group.name}
           </h3>
           <span className="group-account-count">
             ({group.accounts?.length || 0} accounts)
@@ -104,7 +104,7 @@ export default function GroupCard({
         <BalanceHistoryModal
           entityType="group"
           entityId={group.id}
-          entityName={group.group_name}
+          entityName={group.name}
           onClose={() => setShowHistoryModal(false)}
         />
       )}
@@ -125,7 +125,7 @@ export function GroupCardPreview({ group }) {
       <div className="group-color-indicator" style={{ backgroundColor: group.color }} />
       <div className="group-card-header">
         <div className="group-header-left">
-          <h3 className="group-name">{group.group_name}</h3>
+          <h3 className="group-name">{group.name}</h3>
           <span className="group-account-count">
             ({group.accounts?.length || 0} accounts)
           </span>

@@ -887,10 +887,12 @@ func (r *AccountRepository) findAffectedGroups(tx *sql.Tx, accountID int, depend
 
 	groupIDSet := make(map[int]bool)
 
-	// Find groups where these accounts are members
+	// Find groups and institutions where these accounts are members
 	for _, accID := range changedAccountIDs {
 		rows, err := tx.Query(`
-			SELECT group_id FROM account_group_memberships WHERE account_id = $1
+			SELECT m.group_id FROM account_group_memberships m
+			JOIN account_groups g ON m.group_id = g.id
+			WHERE m.account_id = $1 AND g.entity_type IN ('group', 'institution')
 		`, accID)
 		if err != nil {
 			return nil, err
@@ -906,10 +908,10 @@ func (r *AccountRepository) findAffectedGroups(tx *sql.Tx, accountID int, depend
 		rows.Close()
 	}
 
-	// Find calculated groups whose formula references any of these accounts
+	// Find calculated groups and institutions whose formula references any of these accounts
 	rows, err := tx.Query(`
 		SELECT id, formula FROM account_groups
-		WHERE is_calculated = true AND formula IS NOT NULL AND is_archived = false
+		WHERE is_calculated = true AND formula IS NOT NULL AND is_archived = false AND entity_type IN ('group', 'institution')
 	`)
 	if err != nil {
 		return nil, err
@@ -946,26 +948,27 @@ func (r *AccountRepository) findAffectedGroups(tx *sql.Tx, accountID int, depend
 	return groupIDs, nil
 }
 
-// insertGroupHistoryRecordsTx inserts history records for multiple groups
+// insertGroupHistoryRecordsTx inserts history records for multiple groups and institutions
 func (r *AccountRepository) insertGroupHistoryRecordsTx(tx *sql.Tx, groupIDs []int, balanceMap map[int]float64) error {
 	for _, groupID := range groupIDs {
-		// Get group info
+		// Get group/institution info including entity_type
 		var groupName string
+		var entityType string
 		var isCalculated bool
 		var formulaJSON []byte
 
 		err := tx.QueryRow(`
-			SELECT group_name, is_calculated, formula
-			FROM account_groups WHERE id = $1 AND is_archived = false
-		`, groupID).Scan(&groupName, &isCalculated, &formulaJSON)
+			SELECT name, entity_type, is_calculated, formula
+			FROM account_groups WHERE id = $1 AND is_archived = false AND entity_type IN ('group', 'institution')
+		`, groupID).Scan(&groupName, &entityType, &isCalculated, &formulaJSON)
 		if err == sql.ErrNoRows {
-			continue // Skip archived groups
+			continue // Skip archived groups/institutions
 		}
 		if err != nil {
 			return err
 		}
 
-		// Calculate group balance
+		// Calculate group/institution balance
 		var totalBalance float64
 		if isCalculated && len(formulaJSON) > 0 {
 			var formula []models.FormulaItem
@@ -996,11 +999,11 @@ func (r *AccountRepository) insertGroupHistoryRecordsTx(tx *sql.Tx, groupIDs []i
 			memberRows.Close()
 		}
 
-		// Insert history record
+		// Insert history record with the correct entity_type ('group' or 'institution')
 		_, err = tx.Exec(`
 			INSERT INTO entity_balance_history (entity_type, entity_id, entity_name_snapshot, balance)
-			VALUES ('group', $1, $2, $3)
-		`, groupID, groupName, totalBalance)
+			VALUES ($1, $2, $3, $4)
+		`, entityType, groupID, groupName, totalBalance)
 		if err != nil {
 			return err
 		}
@@ -1204,7 +1207,7 @@ func (r *AccountRepository) insertDashboardHistoryRecordsTx(tx *sql.Tx, dashboar
 	return nil
 }
 
-// calculateGroupBalances calculates the balance for each group in groupIDs
+// calculateGroupBalances calculates the balance for each group or institution in groupIDs
 func (r *AccountRepository) calculateGroupBalances(tx *sql.Tx, groupIDs []int, balanceMap map[int]float64) (map[int]float64, error) {
 	groupBalanceMap := make(map[int]float64)
 
@@ -1214,7 +1217,7 @@ func (r *AccountRepository) calculateGroupBalances(tx *sql.Tx, groupIDs []int, b
 
 		err := tx.QueryRow(`
 			SELECT is_calculated, formula
-			FROM account_groups WHERE id = $1 AND is_archived = false
+			FROM account_groups WHERE id = $1 AND is_archived = false AND entity_type IN ('group', 'institution')
 		`, groupID).Scan(&isCalculated, &formulaJSON)
 		if err == sql.ErrNoRows {
 			continue

@@ -147,14 +147,14 @@ export default function DashboardCreate() {
                 selectedIds={selectedGroups}
                 onChange={setSelectedGroups}
                 placeholder="Select groups..."
-                labelKey="group_name"
+                labelKey="name"
                 renderOption={(group) => (
                   <>
                     <div
                       className="group-color-dot"
                       style={{ backgroundColor: group.color }}
                     />
-                    <span>{group.group_name}</span>
+                    <span>{group.name}</span>
                   </>
                 )}
                 renderChip={(group) => (
@@ -163,7 +163,7 @@ export default function DashboardCreate() {
                       className="group-color-dot"
                       style={{ backgroundColor: group.color }}
                     />
-                    <span>{group.group_name}</span>
+                    <span>{group.name}</span>
                   </>
                 )}
               />
