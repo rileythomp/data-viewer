@@ -99,6 +99,7 @@ func New(db *sql.DB) *mux.Router {
 	api.HandleFunc("/datasets/{id}", datasetHandler.GetByID).Methods("GET")
 	api.HandleFunc("/datasets/{id}", datasetHandler.Delete).Methods("DELETE")
 	api.HandleFunc("/datasets/{id}/data", datasetHandler.GetData).Methods("GET")
+	api.HandleFunc("/datasets/{id}/export", datasetHandler.Export).Methods("GET")
 	api.HandleFunc("/datasets/{id}/sync", datasetHandler.Sync).Methods("POST")
 	api.HandleFunc("/datasets/{id}/sync-status", datasetHandler.GetSyncStatus).Methods("GET")
 

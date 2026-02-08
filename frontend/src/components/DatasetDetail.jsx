@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, ChevronLeft, ChevronRight, Database, RefreshCw, FolderOpen, ChevronUp, ChevronDown, Loader } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Database, Download, FileText, GitBranch, Group, Loader, RefreshCw, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { datasetsApi } from '../services/api';
 
 export default function DatasetDetail() {
@@ -119,20 +119,57 @@ export default function DatasetDetail() {
 
     const formatDate = (dateString) => {
         if (!dateString) return 'Never';
-        return new Date(dateString).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
+        const date = new Date(dateString);
+        const month = date.toLocaleDateString('en-US', { month: 'short' });
+        const day = date.getDate();
+        const year = date.getFullYear();
+        const time = date.toLocaleTimeString('en-US', {
+            hour: 'numeric',
             minute: '2-digit',
+            hour12: true
         });
+        return `${month} ${day}, ${year} at ${time}`;
     };
 
-    const formatCellValue = (value) => {
+    const formatCellValue = (value, columnName) => {
         if (value === null || value === undefined) return '';
         if (typeof value === 'object') return JSON.stringify(value);
         return String(value);
     };
+
+    const isAmountColumn = (columnName) => {
+        const lowerName = columnName?.toLowerCase() || '';
+        return lowerName === 'amount' || lowerName.includes('amount') || lowerName === 'balance';
+    };
+
+    const isNegativeAmount = (value) => {
+        if (typeof value === 'number') return value < 0;
+        if (typeof value === 'string') {
+            const cleaned = value.replace(/[$,]/g, '');
+            return cleaned.startsWith('-') || (cleaned.startsWith('(') && cleaned.endsWith(')'));
+        }
+        return false;
+    };
+
+    const handleExportCSV = async () => {
+        try {
+            const blob = await datasetsApi.exportCSV(id);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${dataset.name.replace(/ /g, '_')}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (err) {
+            setError(err.message);
+        }
+    };
+
+    const handleCategorizeTransactions = async () => {
+        
+    }
 
     const getStatusClass = (status) => {
         return `dataset-status dataset-status-${status}`;
@@ -168,79 +205,72 @@ export default function DatasetDetail() {
 
     return (
         <div className="app">
-            <div className="header">
-                <div className="header-content">
-                    <div className="dashboard-header-row">
-                        <button onClick={() => navigate('/datasets')} className="btn-back">
-                            <ArrowLeft size={18} />
-                            <span>Back</span>
-                        </button>
-                        <div className="detail-actions">
-                            <button
-                                onClick={handleSync}
-                                className="btn-icon"
-                                title="Sync Dataset"
-                                disabled={syncing}
-                            >
-                                <RefreshCw size={18} className={syncing ? 'spinning' : ''} />
-                            </button>
-                            <button onClick={handleDelete} className="btn-icon btn-icon-danger" title="Delete">
-                                <Trash2 size={18} />
-                            </button>
-                        </div>
-                    </div>
-                    <div className="upload-detail-title">
-                        <Database size={24} className="dataset-icon" />
+            {/* Header Row */}
+            <div className="dataset-detail-header">
+                <div className="dataset-detail-header-left">
+                    <button onClick={() => navigate('/datasets')} className="btn-outline-back">
+                        <ArrowLeft size={16} />
+                        <span>Back</span>
+                    </button>
+                    <div className="dataset-detail-title">
+                        <Database size={20} className="dataset-icon" />
                         <h1>{dataset.name}</h1>
                     </div>
-                    {dataset.description && (
-                        <p className="dashboard-description">{dataset.description}</p>
+                </div>
+                <div className="dataset-detail-actions">
+                    <button
+                        onClick={handleSync}
+                        className="btn-outline"
+                        disabled={syncing}
+                    >
+                        <RefreshCw size={16} className={syncing ? 'spinning' : ''} />
+                        <span>Sync Now</span>
+                    </button>
+                    <button onClick={handleDelete} className="btn-danger">
+                        <Trash2 size={16} />
+                        <span>Delete</span>
+                    </button>
+                </div>
+            </div>
+
+            {dataset.description && (
+                <p className="dashboard-description">{dataset.description}</p>
+            )}
+
+            {/* Dataset Info Section */}
+            <div className="dataset-info-section">
+                <div className="dataset-source-row">
+                    <div className="dataset-source-path">
+                        <FileText size={16} className="source-icon" />
+                        <span className="source-label">Source:</span>
+                        <span className="source-value">{dataset.folder_path || 'No folder configured'}</span>
+                    </div>
+                    {dataset.last_commit_hash && (
+                        <div className="dataset-commit-badge">
+                            <GitBranch size={14} />
+                            <span className="commit-label">Last Commit:</span>
+                            <code className="commit-hash">{dataset.last_commit_hash.substring(0, 8)}</code>
+                        </div>
                     )}
                 </div>
-            </div>
-
-            <div className="upload-metadata">
-                <div className="upload-metadata-item">
-                    <span className="upload-metadata-label">Status</span>
-                    <span className={getStatusClass(dataset.status)}>
-                        {syncing ? 'Syncing' : dataset.status.charAt(0).toUpperCase() + dataset.status.slice(1)}
-                    </span>
-                </div>
-                <div className="upload-metadata-item">
-                    <span className="upload-metadata-label">Rows</span>
-                    <span className="upload-metadata-value">{dataset.row_count.toLocaleString()}</span>
-                </div>
-                <div className="upload-metadata-item">
-                    <span className="upload-metadata-label">Columns</span>
-                    <span className="upload-metadata-value">{dataResponse?.columns?.length || 0}</span>
-                </div>
-                <div className="upload-metadata-item">
-                    <span className="upload-metadata-label">Last Synced</span>
-                    <span className="upload-metadata-value">{formatDate(dataset.last_synced_at)}</span>
-                </div>
-                <div className="upload-metadata-item">
-                    <span className="upload-metadata-label">Created</span>
-                    <span className="upload-metadata-value">{formatDate(dataset.created_at)}</span>
-                </div>
-            </div>
-
-            {/* Folder Path Section */}
-            <div className="dataset-sources-section">
-                <div className="section-header">
-                    <h2>
-                        <FolderOpen size={18} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-                        Data Source
-                    </h2>
-                </div>
-                <div className="folder-path-display">
-                    <code>{dataset.folder_path || 'No folder configured'}</code>
-                </div>
-                {dataset.last_commit_hash && (
-                    <div className="commit-hash">
-                        <span className="upload-metadata-label">Last Commit:</span>
-                        <code>{dataset.last_commit_hash.substring(0, 8)}</code>
+                <div className="dataset-stats-grid">
+                    <div className="dataset-stat-card">
+                        <span className="stat-label">Rows</span>
+                        <span className="stat-value">{dataset.row_count.toLocaleString()}</span>
                     </div>
-                )}
+                    <div className="dataset-stat-card">
+                        <span className="stat-label">Columns</span>
+                        <span className="stat-value">{dataResponse?.columns?.length || 0}</span>
+                    </div>
+                    <div className="dataset-stat-card">
+                        <span className="stat-label">Last Synced</span>
+                        <span className="stat-value">{formatDate(dataset.last_synced_at)}</span>
+                    </div>
+                    <div className="dataset-stat-card">
+                        <span className="stat-label">Created</span>
+                        <span className="stat-value">{formatDate(dataset.created_at)}</span>
+                    </div>
+                </div>
             </div>
 
             {dataset.error_message && (
@@ -253,12 +283,22 @@ export default function DatasetDetail() {
             <div className="upload-data-section">
                 <div className="upload-data-header">
                     <h2>Data Preview</h2>
-                    {syncing && (
-                        <div className="sync-indicator">
-                            <Loader size={16} className="spinning" />
-                            <span>Syncing data...</span>
-                        </div>
-                    )}
+                    <div className="data-header-actions">
+                        {syncing && (
+                            <div className="sync-indicator">
+                                <Loader size={16} className="spinning" />
+                                <span>Syncing data...</span>
+                            </div>
+                        )}
+                        <button onClick={handleExportCSV} className="btn-outline-small">
+                            <Download size={14} />
+                            <span>Export CSV</span>
+                        </button>
+                        <button onClick={handleCategorizeTransactions} className="btn-outline-small">
+                            <Group size={14} />
+                            <span>Categorize</span>
+                        </button>
+                    </div>
                 </div>
 
                 {dataLoading && !dataResponse ? (
@@ -298,9 +338,19 @@ export default function DatasetDetail() {
                                             <td className="row-number-col">
                                                 {(page - 1) * pageSize + rowIdx + 1}
                                             </td>
-                                            {row.map((cell, cellIdx) => (
-                                                <td key={cellIdx}>{formatCellValue(cell)}</td>
-                                            ))}
+                                            {row.map((cell, cellIdx) => {
+                                                const columnName = dataResponse.columns?.[cellIdx];
+                                                const isAmount = isAmountColumn(columnName);
+                                                const isNegative = isAmount && isNegativeAmount(cell);
+                                                return (
+                                                    <td
+                                                        key={cellIdx}
+                                                        className={isNegative ? 'amount-negative' : (isAmount ? 'amount-cell' : '')}
+                                                    >
+                                                        {formatCellValue(cell, columnName)}
+                                                    </td>
+                                                );
+                                            })}
                                         </tr>
                                     ))}
                                 </tbody>

@@ -14,6 +14,9 @@ type DatasetStorage interface {
 	// GetData retrieves paginated data for a dataset
 	GetData(datasetID int, tableName string, page, pageSize int, sortColumn, sortDirection string) (*DataPage, error)
 
+	// GetAllData retrieves all data for a dataset (for export)
+	GetAllData(datasetID int, tableName string) (*DataPage, error)
+
 	// GetRowCount returns the total number of rows for a dataset
 	GetRowCount(tableName string) (int, error)
 
