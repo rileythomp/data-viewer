@@ -527,4 +527,10 @@ export const datasetsApi = {
     if (!res.ok) throw new Error('Failed to delete dataset');
     return res.json();
   },
+
+  exportCSV: async (id) => {
+    const res = await fetch(`${API_BASE}/datasets/${id}/export`);
+    if (!res.ok) throw new Error('Failed to export dataset');
+    return res.blob();
+  },
 };

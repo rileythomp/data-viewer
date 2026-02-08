@@ -344,6 +344,72 @@ func (s *PostgresStorage) GetData(datasetID int, tableName string, page, pageSiz
 	}, nil
 }
 
+// GetAllData retrieves all data for a dataset (for export)
+func (s *PostgresStorage) GetAllData(datasetID int, tableName string) (*DataPage, error) {
+	fqTableName := fullyQualifiedTableName(tableName)
+
+	// Get columns
+	columns, err := s.GetColumns(datasetID, tableName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get total count
+	total, err := s.GetRowCount(tableName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build column select list
+	var selectCols []string
+	for _, col := range columns {
+		selectCols = append(selectCols, sanitizeColumnName(col))
+	}
+
+	query := fmt.Sprintf("SELECT %s FROM %s ORDER BY row_index",
+		strings.Join(selectCols, ", "),
+		fqTableName)
+
+	dbRows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data: %w", err)
+	}
+	defer dbRows.Close()
+
+	var rows [][]any
+	for dbRows.Next() {
+		values := make([]any, len(columns))
+		valuePtrs := make([]any, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := dbRows.Scan(valuePtrs...); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		row := make([]any, len(columns))
+		for i, v := range values {
+			if v == nil {
+				row[i] = nil
+			} else if b, ok := v.([]byte); ok {
+				row[i] = string(b)
+			} else {
+				row[i] = v
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	return &DataPage{
+		Columns:  columns,
+		Rows:     rows,
+		Total:    total,
+		Page:     1,
+		PageSize: total,
+	}, nil
+}
+
 // GetRowCount returns the total number of rows for a dataset
 func (s *PostgresStorage) GetRowCount(tableName string) (int, error) {
 	fqTableName := fullyQualifiedTableName(tableName)
