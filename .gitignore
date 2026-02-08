@@ -4,3 +4,4 @@ scripts/
 *ws*
 server
 .logs/
+.DS_Store
