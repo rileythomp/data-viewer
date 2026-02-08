@@ -324,3 +324,27 @@ func (r *DatasetRepository) GetData(id int, page, pageSize int, sortColumn, sort
 func (r *DatasetRepository) IsSyncing(id int) bool {
 	return r.syncService.IsSyncing(id)
 }
+
+func (r *DatasetRepository) GetAllData(id int) (*models.DatasetDataResponse, error) {
+	info, err := r.GetDatasetInfo(id)
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
+		return nil, nil
+	}
+
+	dataPage, err := r.storage.GetAllData(id, info.TableName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.DatasetDataResponse{
+		Columns:  dataPage.Columns,
+		Rows:     dataPage.Rows,
+		Total:    dataPage.Total,
+		Page:     1,
+		PageSize: dataPage.Total,
+		Syncing:  false,
+	}, nil
+}

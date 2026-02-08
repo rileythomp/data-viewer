@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -192,4 +194,65 @@ func (h *DatasetHandler) GetSyncStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"syncing": syncing})
+}
+
+func (h *DatasetHandler) Export(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid dataset ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get dataset for filename
+	dataset, err := h.repo.GetByID(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if dataset == nil {
+		http.Error(w, "Dataset not found", http.StatusNotFound)
+		return
+	}
+
+	// Get all data
+	response, err := h.repo.GetAllData(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if response == nil {
+		http.Error(w, "No data available", http.StatusNotFound)
+		return
+	}
+
+	// Set headers for CSV download
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.csv\"", dataset.Name))
+
+	// Write CSV
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	// Write header row
+	if err := writer.Write(response.Columns); err != nil {
+		http.Error(w, "Failed to write CSV", http.StatusInternalServerError)
+		return
+	}
+
+	// Write data rows
+	for _, row := range response.Rows {
+		record := make([]string, len(row))
+		for i, val := range row {
+			if val == nil {
+				record[i] = ""
+			} else {
+				record[i] = fmt.Sprintf("%v", val)
+			}
+		}
+		if err := writer.Write(record); err != nil {
+			http.Error(w, "Failed to write CSV", http.StatusInternalServerError)
+			return
+		}
+	}
 }
